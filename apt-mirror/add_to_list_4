@@ -1,0 +1,219 @@
+#!/bin/bash
+clear
+
+NEWLINE=$'\n'
+
+find_repos()
+{
+	IFS=$' \t\n'
+	packagelinks=""
+	for path in `find mirror -name 'pool' -type d \( -name pool -prune \)`
+	do
+		path=$(echo "${path%"/"*}")
+		numversions=0
+		versions=()
+		components=()
+		for version in `find "${path}/dists" -mindepth 1 -maxdepth 1 -type d`
+		do
+			numversions=$((${numversions}+1))
+			versions[$numversions]=" ${version##*"/"}"
+			for component in `find "${path}/dists/${version##*"/"}" -mindepth 1 -maxdepth 1 -type d`
+			do
+				components[$numversions]="${components[$numversions]} ${component##*"/"}"
+			done
+		done
+		times=0
+		while [[ $times != $numversions ]]
+		do
+			times=$((${times}+1))
+			packagelink="deb file://${HOME}/${path}${versions[$times]}${components[$times]}${NEWLINE}"
+			packagelinks="${packagelinks}${packagelink}"
+		done
+	done
+	packagelinks=${packagelinks%${NEWLINE}*}
+	echo -n "${packagelinks}"
+}
+
+find_old_repos()
+{
+	packagelinks=''
+	repoPaths="$(find mirror -name pool -type d -prune -o -type d -exec test -e "{}/Packages" ';' -exec bash -c "find {} -mindepth 1 -maxdepth 1 -name \*.deb 2>/dev/null | wc -l | "'{ read count; test $count != 0; }' \; -print)"
+	IFS="$NEWLINE"
+	for repoPath in $repoPaths
+	do
+		packagelink="deb file://${HOME}/${repoPath} /${NEWLINE}"
+		packagelinks="${packagelinks}${packagelink}"
+	done
+	packagelinks=${packagelinks%${NEWLINE}*}
+	echo -n "${packagelinks}"
+}
+
+add_to_list ()
+{
+	links="$(find_repos)${NEWLINE}$(find_old_repos)"
+	clear
+	echo $links
+	sudo sh -c "echo \"$links\" >> /etc/apt/sources.list"
+}
+
+remove_from_list ()
+{
+	file=$(</etc/apt/sources.list)
+
+	IFS="$NEWLINE"
+	links="$(find_repos)${NEWLINE}$(find_old_repos)"
+
+	for repolink in $links
+	do
+		file=${file//"${NEWLINE}${repolink}"/}
+		file=${file//"${repolink}${NEWLINE}"/}
+		file=${file//"${repolink}"/}
+	done
+	clear
+	sudo sh -c "echo \"$file\" > /etc/apt/sources.list"
+}
+
+add_options ()
+{
+file=$(</etc/apt/apt.conf)
+file=${file//"${NEWLINE}APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;"/}
+file=${file//"APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;$NEWLINE"/}
+file=${file//"APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;"/}
+file="${file}${NEWLINE}APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;"
+sudo sh -c "echo \"$file\" > /etc/apt/apt.conf"
+}
+
+backupold ()
+{
+ sudo mv '/etc/apt/sources.list' '/etc/apt/sources_old.list'
+ sudo sh -c "echo '#' > /etc/apt/sources.list"
+}
+
+saybye()
+{
+ echo $1
+}
+
+Create_keys_and_sign_repo()
+{
+ mkdir keys
+
+ gpg --batch --gen-key <<EOF
+      %echo Generating a default key
+      Key-Type: 1
+      Key-Length: 1024
+      Subkey-Type: 1
+      Subkey-Length: 1024
+      Name-Real: Local_Repo
+      #Name-Comment: with stupid passphrase
+      #Name-Email: joe@foo.bar
+      Expire-Date: 0
+      Passphrase: abc
+      %pubring ./keys/pubring.pub
+      %secring ./keys/secring.sec
+      # Do a commit here, so that we can later print "done" :-)
+      %commit
+      %echo done
+EOF
+
+ #gpg --no-default-keyring --secret-keyring ./keys/secring.sec \
+ #            --keyring ./keys/pubring.pub --list-secret-keys
+
+ pubkey=$(gpg --no-default-keyring --keyring "./keys/pubring.pub" --export -a)
+
+ echo "$pubkey" | sudo apt-key add -
+ 
+ IFS="$NEWLINE"
+
+ for repolink in `grep -x 'deb .*' ./mirror.list`
+ do
+  repo_path="./mirror/${repolink##*"http://"}"
+  IFS=" "
+  times=0
+  unset path_parts
+  for path_part in $repo_path
+  do
+   times=$((${times}+1))
+   path_parts[$times]=$path_part
+  done
+  if [[ -a "${path_parts[1]}${path_parts[2]}" ]]
+  then
+   path="${path_parts[1]}${path_parts[2]}"
+  else
+   path="${path_parts[1]}/dists/${path_parts[2]}"
+  fi
+  gpg --no-use-agent --batch --no-tty --yes --secret-keyring "./keys/secring.sec" --keyring "./keys/pubring.pub" --passphrase "abc" --armor --detach-sign --output "${path}/Release.gpg" "${path}/Release"
+ done
+}
+
+Sign_repo()
+{
+ pubkey=$(gpg --no-default-keyring --keyring "./keys/pubring.pub" --export -a)
+
+ echo "$pubkey" | sudo apt-key add -
+ 
+ IFS="$NEWLINE"
+
+ for repolink in `grep -x 'deb .*' ./mirror.list`
+ do
+  repo_path="./mirror/${repolink##*"http://"}"
+  IFS=" "
+  times=0
+  unset path_parts
+  for path_part in $repo_path
+  do
+   times=$((${times}+1))
+   path_parts[$times]=$path_part
+  done
+  if [[ -a "${path_parts[1]}${path_parts[2]}" ]]
+  then
+   path="${path_parts[1]}${path_parts[2]}"
+  else
+   path="${path_parts[1]}/dists/${path_parts[2]}"
+  fi
+  gpg --no-use-agent --batch --no-tty --yes --secret-keyring "./keys/secring.sec" --keyring "./keys/pubring.pub" --passphrase "abc" --armor --detach-sign --output "${path}/Release.gpg" "${path}/Release"
+ done
+}
+
+if [[ -a "./keys" ]]
+then
+ Sign_repo
+else
+ Create_keys_and_sign_repo
+fi
+
+
+if [ ! -f /etc/apt/sources.list ]; then
+sudo sh -c "echo '#' > /etc/apt/sources.list"
+fi
+
+if [ -s /etc/apt/sources.list ]; then
+:
+else
+sudo sh -c "echo '#' > /etc/apt/sources.list"
+fi
+
+clear
+echo "Loading..."
+matched=`find mirror -name 'pool' -type d \( -name pool -prune \) -print -quit`
+found=$(grep $(echo "${matched%"/"*}") /etc/apt/sources.list)
+
+if [[ $found ]]
+then
+remove_from_list
+add_to_list
+#add_options
+fi
+
+if [[ -z $found ]]
+then
+backupold
+add_to_list
+#add_options
+fi
+ln -sr ./mirror $HOME/mirror
+sudo dpkg --add-architecture i386
+sudo apt-get update
+clear
+saybye bye
+exit 0

@@ -1,0 +1,6 @@
+n = peripheral.wrap("right")
+
+while true do
+n.say("TROLOLOLOLOLOL")
+sleep(0.5)
+end

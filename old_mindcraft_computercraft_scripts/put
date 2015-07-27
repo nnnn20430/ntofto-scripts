@@ -1,0 +1,39 @@
+server = "http://localhost/webturtle/upload.php"
+pass = "now_it_has_pass_!"
+
+
+local function printUsage()
+    print( "Usages:" )
+    print( "put <name> <program>" )
+end
+ 
+local tArgs = { ... }
+if #tArgs < 2 then
+    printUsage()
+    return
+end
+
+local sFile = tArgs[2]
+local sName = tArgs[1]
+local sPath = shell.resolve( sFile )
+    
+-- Read in the file
+local file = fs.open( sPath, "r" )
+if file == nil then print("ERROR:program dosent exist")
+return
+end
+local sText = file.readAll()
+file.close()
+
+local response = http.post(
+    ""..server,
+    "name="..textutils.urlEncode(tostring(sName)).."&"..
+    "code="..textutils.urlEncode(tostring(sText)).."&"..
+    "pass="..textutils.urlEncode(tostring(pass))
+)
+
+if response then
+    print( "Success." )
+else
+    print( "Failed." )
+end

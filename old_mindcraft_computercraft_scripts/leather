@@ -1,0 +1,14 @@
+print("Rotten Flesh in slot one")
+print("Leather in slot two")
+print("Press and hold 'Q' to stop.")
+while true do
+ turtle.select(1)
+ turtle.drop(1)
+ os.startTimer(1)
+ sleep(0.7)
+ e, a = os.pullEvent()
+ if a == 16 then break else
+ turtle.select(2)
+ turtle.suck()
+ end
+end

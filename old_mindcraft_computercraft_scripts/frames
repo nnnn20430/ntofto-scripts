@@ -1,0 +1,92 @@
+local args = {...}
+
+if #args ~= 2 then
+ if fs.exists("save") == false then
+  print("Usage: startup <Direction> <Blocks>")
+  print("Directions:(north,south,west,east,up,down)")
+return  
+end
+end
+
+pd={"north","south","west","east","up","down","error"}
+local dc=0
+
+if fs.exists("save") == false then
+for key,value in pairs(pd) do
+ dc=dc+1
+ if value == args[1] then break end
+ if dc==6 then
+  print("Error: invalid direction")
+  return
+ end
+end
+end
+
+if fs.exists("save") == false then
+number=tonumber(args[2])
+if number == nil then
+ print("Error: blocks must be a number")
+ return
+end
+end
+
+
+down=0
+up=1
+north=2
+south=3
+west=4
+east=5
+if fs.exists("save") == false then
+blocks=args[2]
+direction=args[1]
+end
+
+local function getDeviceSide(deviceType)
+  local lstSides = {"left","right","top","bottom","front","back"};
+  for i, side in pairs(lstSides) do
+    if (peripheral.isPresent(side)) then
+      if (peripheral.getType(side) == deviceType) then
+        return side;
+      end
+    end
+  end -- for-do
+  return nil;
+end
+
+sleep(1)
+if fs.exists("save") == false then
+ x=0
+ f=fs.open("save","w")
+ f.write(""..direction.." "..blocks.." "..x)
+ f.close()
+end
+
+f=fs.open("save","r")
+s=f.readAll()
+local o={}
+local notr=0
+for w in string.gmatch(s, "%w+") do
+ notr = notr +1
+ o[notr] = w
+end
+if o[2] == o[3] then
+fs.delete("save")
+print("done")
+return
+else
+f.close()
+o[3]=o[3]+1
+f=fs.open("save","w")
+f.write(""..o[1].." "..o[2].." "..o[3])
+f.close()
+if fs.exists("save") == true then
+local side = getDeviceSide("JAKJ_RIM_CarriageController")
+drive=peripheral.wrap(side)
+if drive.move(o[1],false,false) ~= true then
+ print("Error: cant move")
+ fs.delete("save")
+ return
+end
+end
+end

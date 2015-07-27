@@ -1,0 +1,266 @@
+#!/bin/bash
+NEWLINE=$'\n'
+REPOROOT=$(cd "${0%/*}" && echo $PWD)
+
+find_repos_proper()
+{
+  IFS=$' \t\n'
+  packagelinks=""
+  for path in `find mirror -name 'pool' -type d \( -name pool -prune \)`
+  do
+    path=$(echo "${path%"/"*}")
+    numversions=0
+    versions=()
+    components=()
+    for version in `find "${path}/dists" -mindepth 1 -maxdepth 1 -type d`
+    do
+      numversions=$((${numversions}+1))
+      versions[$numversions]=" ${version##*"/"}"
+      for component in `find "${path}/dists/${version##*"/"}" -mindepth 1 -maxdepth 1 -type d`
+      do
+        components[$numversions]="${components[$numversions]} ${component##*"/"}"
+      done
+    done
+    times=0
+    while [[ $times != $numversions ]]
+    do
+      times=$((${times}+1))
+      packagelink="deb file://${REPOROOT}/${path}${versions[$times]}${components[$times]}${NEWLINE}"
+      packagelink_source="deb-src file://${REPOROOT}/${path}${versions[$times]}${components[$times]}${NEWLINE}"
+      packagelinks="${packagelinks}${packagelink}${packagelink_source}"
+    done
+  done
+  packagelinks=${packagelinks%${NEWLINE}*}
+  echo -n "${packagelinks}"
+}
+
+find_repos()
+{
+  packagelinks=""
+  packagelinks="$(find_repos_proper)${NEWLINE}"
+  prune_paths=""
+  IFS=$'\n'
+  for path in $(echo "$packagelinks" | sed "s|deb file://${REPOROOT}/||g" | sed -r "s|([^ ]*)(.*)|\1|")
+  do
+    prune_paths="${prune_paths} -path $path -o"
+  done
+  prune_paths=${prune_paths%' '*}
+  IFS=$' \t\n'
+  for path in `find mirror -name pool -type d -prune -o -type d \( $prune_paths \) -prune -o -name Packages -print`
+  do
+    path=$(echo "${path%"/"*}")
+    packagelink="deb file://${REPOROOT}/${path} /${NEWLINE}"
+    packagelink_source="deb-src file://${REPOROOT}/${path} /${NEWLINE}"
+    packagelinks="${packagelinks}${packagelink}${packagelink_source}"
+  done
+  packagelinks=${packagelinks%${NEWLINE}*}
+  echo -n "${packagelinks}"
+}
+
+add_to_list ()
+{
+  links="$(find_repos)"
+  clear
+  sudo sh -c "echo \"$links\" >> /etc/apt/sources.list"
+}
+
+remove_from_list ()
+{
+  file=$(</etc/apt/sources.list)
+  
+  IFS="$NEWLINE"
+  links="$(find_repos)"
+  
+  for repolink in $links
+  do
+    file=${file//"${NEWLINE}${repolink}"/}
+    file=${file//"${repolink}${NEWLINE}"/}
+    file=${file//"${repolink}"/}
+  done
+  clear
+  sudo sh -c "echo \"$file\" > /etc/apt/sources.list"
+}
+
+add_options ()
+{
+  file=$(</etc/apt/apt.conf)
+  file=${file//"${NEWLINE}APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;"/}
+  file=${file//"APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;$NEWLINE"/}
+  file=${file//"APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;"/}
+  file="${file}${NEWLINE}APT { Get { AllowUnauthenticated 1; }; };APT::Install-Recommends true;"
+  sudo sh -c "echo \"$file\" > /etc/apt/apt.conf"
+}
+
+backupold ()
+{
+  sudo mv '/etc/apt/sources.list' '/etc/apt/sources_old.list'
+  sudo sh -c "echo '#' > /etc/apt/sources.list"
+}
+
+saybye()
+{
+  echo $1
+}
+
+Create_keys()
+{
+  mkdir keys
+  
+gpg --batch --gen-key <<EOF
+      %echo Generating a default key
+      Key-Type: 1
+      Key-Length: 1024
+      Subkey-Type: 1
+      Subkey-Length: 1024
+      Name-Real: Local_Repo
+      #Name-Comment: with stupid passphrase
+      #Name-Email: joe@foo.bar
+      Expire-Date: 0
+      Passphrase: abc
+      %pubring ./keys/pubring.pub
+      %secring ./keys/secring.sec
+      # Do a commit here, so that we can later print "done" :-)
+      %commit
+      %echo done
+EOF
+  
+  #gpg --no-default-keyring --secret-keyring ./keys/secring.sec \
+  #            --keyring ./keys/pubring.pub --list-secret-keys
+}
+
+Sign_repo()
+{
+  pubkey=$(gpg --no-default-keyring --keyring "./keys/pubring.pub" --export -a)
+  
+  echo "$pubkey" | sudo apt-key add -
+  
+  IFS="$NEWLINE"
+  
+  for path in `find mirror -name pool -type d -prune -o -name Release -print`
+  do
+    path=$(echo "${path%"/"*}")
+    gpg --no-use-agent --batch --no-tty --yes --secret-keyring "./keys/secring.sec" --keyring "./keys/pubring.pub" --passphrase "abc" --armor --detach-sign --output "${path}/Release.gpg" "${path}/Release"
+  done
+}
+
+sort_dir()
+{
+  IFS=$' \t\n'
+  dir_list=""
+  dir_list_out=""
+  dir_list_out2=""
+  times_found=0
+  while IFS= read -d "$NEWLINE" line; do dir_list="${dir_list}${line}${NEWLINE}"; done
+  dir_list=${dir_list%${NEWLINE}}
+  if test "$1"; then dir_list="$1"; fi
+  IFS=$'\n'
+  for Path in $dir_list; do
+    times_found=0
+    times_found=$(echo -n "$Path" | { while read -d "/"; do times_found=$((times_found+1)); done; echo $times_found; })
+    dir_list_out="${dir_list_out}${times_found}_${Path}${NEWLINE}"
+  done
+  dir_list_out=${dir_list_out%${NEWLINE}}
+  dir_list_out=$(echo -n "$dir_list_out" | sort -r)
+  IFS=$'\n'
+  for Path in $dir_list_out; do
+    dir_list_out2="${dir_list_out2}${Path#*_}${NEWLINE}"
+  done
+  dir_list_out2=${dir_list_out2%${NEWLINE}}
+  IFS=$' \t\n'
+  echo -n "$dir_list_out2"
+}
+
+delete_allsum ()
+{
+  #grep -E -z -o 'MD5Sum:(\s .*)+' ./Release
+  for path in $(find mirror -name pool -type d -prune -o -name Release -print | sort_dir)
+  do
+    file=$({ echo -n "$(<./${path})"; printf "\x0a"; } | while IFS= read -d "$NEWLINE" line; do echo -n "${line}"; echo -n '!NEWLINECHAR!'; done)
+    MD5Sum=$(echo -n "$file" | (grep -E -z -o 'MD5Sum:(!NEWLINECHAR! [^!]*)+'; echo -n '!NEWLINECHAR!') | tr -d '\n')
+    SHA1=$(echo -n "$file" | (grep -E -z -o 'SHA1:(!NEWLINECHAR! [^!]*)+'; echo -n '!NEWLINECHAR!') | tr -d '\n')
+    SHA256=$(echo -n "$file" | (grep -E -z -o 'SHA256:(!NEWLINECHAR! [^!]*)+'; echo -n '!NEWLINECHAR!') | tr -d '\n')
+    file=$(echo -n "$file" | sed -r "s,$MD5Sum,,g" | sed -r "s,$SHA1,,g" | sed -r "s,$SHA256,,g" | sed -r 's/!NEWLINECHAR!/\n/g')
+    echo -n "$file" > "./${path}"
+  done
+}
+
+create_allsum ()
+{
+  for path in $(find mirror -name pool -type d -prune -o -name Release -print | sort_dir)
+  do
+    file=$({ echo -n "$(<./${path})"; printf "\x0a"; } | while IFS= read -d "$NEWLINE" line; do echo -n "${line}"; echo -n '!NEWLINECHAR!'; done)
+    file=$(echo -n "${file}MD5Sum:"; echo -n '!NEWLINECHAR!')
+    ORIG_DIR=$PWD
+    cd "${path%"/"*}"
+    for filePath in $({ echo -n $({ find . -mindepth 2 \( -name "Release" -o -name "Packages*" -o -name "Index" -o -name "Sources*" -o -name "Translation*" \) -print; find . -maxdepth 1 \( -name "Packages*" -o -name "Index" -o -name "Sources*" -o -name "Translation*" \) -print; }); printf "\x0a"; } | sort_dir )
+    do
+      #echo -n "$(MD5Sum=$(md5sum $test); echo -n " ${MD5Sum%" " *}"; printf " % 16d" $(stat -c "%s" $test); echo -n "$(echo -n " ${test#*"/"}")"; echo -n "'!NEWLINECHAR!'" | tr -d "'")"
+      file=$(echo -n "${file}"; echo -n "$(MD5Sum=$(md5sum $filePath); echo -n " ${MD5Sum%" " *}"; printf " % 16d" $(stat -c "%s" $filePath); echo -n "$(echo -n " ${filePath#*"/"}")"; echo -n "'!NEWLINECHAR!'" | tr -d "\'")")
+    done
+    file=$(echo -n "${file}SHA1:"; echo -n '!NEWLINECHAR!')
+    for filePath in $({ echo -n $({ find . -mindepth 2 \( -name "Release" -o -name "Packages*" -o -name "Index" -o -name "Sources*" -o -name "Translation*" \) -print; find . -maxdepth 1 \( -name "Packages*" -o -name "Index" -o -name "Sources*" -o -name "Translation*" \) -print; }); printf "\x0a"; } | sort_dir )
+    do
+      file=$(echo -n "${file}"; echo -n "$(SHA1=$(sha1sum $filePath); echo -n " ${SHA1%" " *}"; printf " % 16d" $(stat -c "%s" $filePath); echo -n "$(echo -n " ${filePath#*"/"}")"; echo -n "'!NEWLINECHAR!'" | tr -d "\'")")
+    done
+    file=$(echo -n "${file}SHA256:"; echo -n '!NEWLINECHAR!')
+    for filePath in $({ echo -n $({ find . -mindepth 2 \( -name "Release" -o -name "Packages*" -o -name "Index" -o -name "Sources*" -o -name "Translation*" \) -print; find . -maxdepth 1 \( -name "Packages*" -o -name "Index" -o -name "Sources*" -o -name "Translation*" \) -print; }); printf "\x0a"; } | sort_dir )
+    do
+      file=$(echo -n "${file}"; echo -n "$(SHA256=$(sha256sum $filePath); echo -n " ${SHA256%" " *}"; printf " % 16d" $(stat -c "%s" $filePath); echo -n "$(echo -n " ${filePath#*"/"}")"; echo -n "'!NEWLINECHAR!'" | tr -d "\'")")
+    done
+    cd "$ORIG_DIR"
+    file=$(echo -n "$file" | sed -r 's/!NEWLINECHAR!/\n/g')
+    echo -n "$file" > ./${path}
+  done
+}
+
+main(){
+  clear
+  delete_allsum
+  create_allsum
+  
+  if [[ -a "./keys" ]]
+  then
+    Sign_repo
+  else
+    Create_keys
+    Sign_repo
+  fi
+  
+  
+  if [ ! -f /etc/apt/sources.list ]; then
+    sudo sh -c "echo '#' > /etc/apt/sources.list"
+  fi
+  
+  if [ -s /etc/apt/sources.list ]; then
+    :
+  else
+    sudo sh -c "echo '#' > /etc/apt/sources.list"
+  fi
+  
+  clear
+  echo "Loading..."
+  matched=`find mirror -name 'pool' -type d \( -name pool -prune \) -print -quit`
+  found=$(grep $(echo "${matched%"/"*}") /etc/apt/sources.list)
+  
+  if [[ $found ]]
+  then
+    remove_from_list
+    add_to_list
+    #add_options
+  fi
+  
+  if [[ -z $found ]]
+  then
+    backupold
+    add_to_list
+    #add_options
+  fi
+  #ln -sr ./mirror $HOME/mirror
+  sudo dpkg --add-architecture i386
+  sudo apt-get update
+  clear
+  saybye bye
+  exit 0
+}
+
+main

@@ -1,0 +1,21 @@
+local args = {...}
+
+if #args ~= 2 then
+  print("Usage: "..shell.getRunningProgram().." <name> <save as>")
+return  
+end
+
+local h = http.get("http://localhost/scripts/"..args[1]).readAll()
+
+if h then
+  if not fs.exists(args[2]) then
+        f = fs.open(args[2], "w")
+        f.write(h)
+        f.close()
+        print("File '"..args[2].."' downloaded.")
+  else
+        error("File '"..args[2].."' already exists.")
+  end
+else
+  error("Could not download file!")
+end

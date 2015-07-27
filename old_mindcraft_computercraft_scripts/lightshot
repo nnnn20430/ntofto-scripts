@@ -1,0 +1,781 @@
+
+--  
+--  Lighshot Screen Recorder
+--  Made by GravityScore
+--  
+
+
+--  -------- Variables
+
+--  Lower the loop rate to decrease recording lag but to decrease compression
+--  Do not set to below 50 else the file could become really big
+local loopRate = 300
+
+-- Version
+local version = "1.5"
+
+-- Terminal
+local oldTerm = {}
+local newTerm = {}
+local w, h = term.getSize()
+
+-- Events
+local event_exitRecording = "lightshot_exitRecordingEvent"
+
+-- Locations
+local lightshotURL = "https://raw.github.com/GravityScore/Lightshot/master/lightshot.lua"
+local lightshotLocation = "/" .. shell.getRunningProgram()
+local recordLocation = "/.lightshot_recording"
+
+-- Variables
+local clock = 0
+local nfaRecording = false
+local paused = false
+local handle = nil
+
+local recordHeader = [[
+--  
+--  Recorded by Lightshot
+--  
+
+local function sp(...) return sleep(...) end
+local function c(...) return term.write(...) end
+local function d(...) return term.setCursorPos(...) end
+local function e(...) return term.setBackgroundColor(...) end
+local function f(...) return term.setTextColor(...) end
+local function g(...) return term.clear(...) end
+local function h(...) return term.clearLine() end
+local function i(...) return term.setCursorBlink(...) end
+local function j(...) return term.scroll(...) end
+
+-- sD here...
+
+]]
+
+
+--  -------- Utilities
+
+local function modRead(properties)
+	local w, h = term.getSize()
+	local defaults = {replaceChar = nil, history = nil, visibleLength = nil, textLength = nil, 
+		liveUpdates = nil, exitOnKey = nil}
+	if not properties then properties = {} end
+	for k, v in pairs(defaults) do if not properties[k] then properties[k] = v end end
+	if properties.replaceChar then properties.replaceChar = properties.replaceChar:sub(1, 1) end
+	if not properties.visibleLength then properties.visibleLength = w end
+
+	local sx, sy = term.getCursorPos()
+	local line = ""
+	local pos = 0
+	local historyPos = nil
+
+	local function redraw(repl)
+		local scroll = 0
+		if properties.visibleLength and sx + pos > properties.visibleLength + 1 then 
+			scroll = (sx + pos) - (properties.visibleLength + 1)
+		end
+
+		term.setCursorPos(sx, sy)
+		local a = repl or properties.replaceChar
+		if a then term.write(string.rep(a, line:len() - scroll))
+		else term.write(line:sub(scroll + 1, -1)) end
+		term.setCursorPos(sx + pos - scroll, sy)
+	end
+
+	local function sendLiveUpdates(event, ...)
+		if type(properties.liveUpdates) == "function" then
+			local ox, oy = term.getCursorPos()
+			properties.liveUpdates(line, event, ...)
+			if a == true and data == nil then
+				term.setCursorBlink(false)
+				return line
+			elseif a == true and data ~= nil then
+				term.setCursorBlink(false)
+				return data
+			end
+			term.setCursorPos(ox, oy)
+		end
+	end
+
+	term.setCursorBlink(true)
+	while true do
+		local e, but, x, y, p4, p5 = os.pullEvent()
+
+		if e == "char" then
+			local s = false
+			if properties.textLength and line:len() < properties.textLength then s = true
+			elseif not properties.textLength then s = true end
+
+			local canType = true
+			if not properties.grantPrint and properties.refusePrint then
+				local canTypeKeys = {}
+				if type(properties.refusePrint) == "table" then
+					for _, v in pairs(properties.refusePrint) do
+						table.insert(canTypeKeys, tostring(v):sub(1, 1))
+					end
+				elseif type(properties.refusePrint) == "string" then
+					for char in properties.refusePrint:gmatch(".") do
+						table.insert(canTypeKeys, char)
+					end
+				end
+				for _, v in pairs(canTypeKeys) do if but == v then canType = false end end
+			elseif properties.grantPrint then
+				canType = false
+				local canTypeKeys = {}
+				if type(properties.grantPrint) == "table" then
+					for _, v in pairs(properties.grantPrint) do
+						table.insert(canTypeKeys, tostring(v):sub(1, 1))
+					end
+				elseif type(properties.grantPrint) == "string" then
+					for char in properties.grantPrint:gmatch(".") do
+						table.insert(canTypeKeys, char)
+					end
+				end
+				for _, v in pairs(canTypeKeys) do if but == v then canType = true end end
+			end
+
+			if s and canType then
+				line = line:sub(1, pos) .. but .. line:sub(pos + 1, -1)
+				pos = pos + 1
+				redraw()
+			end
+		elseif e == "key" then
+			if but == keys.enter then break
+			elseif but == keys.left then if pos > 0 then pos = pos - 1 redraw() end
+			elseif but == keys.right then if pos < line:len() then pos = pos + 1 redraw() end
+			elseif (but == keys.up or but == keys.down) and properties.history then
+				redraw(" ")
+				if but == keys.up then
+					if historyPos == nil and #properties.history > 0 then 
+						historyPos = #properties.history
+					elseif historyPos > 1 then 
+						historyPos = historyPos - 1
+					end
+				elseif but == keys.down then
+					if historyPos == #properties.history then historyPos = nil
+					elseif historyPos ~= nil then historyPos = historyPos + 1 end
+				end
+
+				if properties.history and historyPos then
+					line = properties.history[historyPos]
+					pos = line:len()
+				else
+					line = ""
+					pos = 0
+				end
+
+				redraw()
+				sendLiveUpdates("history")
+			elseif but == keys.backspace and pos > 0 then
+				redraw(" ")
+				line = line:sub(1, pos - 1) .. line:sub(pos + 1, -1)
+				pos = pos - 1
+				redraw()
+				sendLiveUpdates("delete")
+			elseif but == keys.home then
+				pos = 0
+				redraw()
+			elseif but == keys.delete and pos < line:len() then
+				redraw(" ")
+				line = line:sub(1, pos) .. line:sub(pos + 2, -1)
+				redraw()
+				sendLiveUpdates("delete")
+			elseif but == keys["end"] then
+				pos = line:len()
+				redraw()
+			elseif properties.exitOnKey then 
+				if but == properties.exitOnKey or (properties.exitOnKey == "control" and 
+						(but == 29 or but == 157)) then 
+					term.setCursorBlink(false)
+					return nil
+				end
+			end
+		end
+
+		sendLiveUpdates(e, but, x, y, p4, p5)
+	end
+
+	term.setCursorBlink(false)
+	if line ~= nil then line = line:gsub("^%s*(.-)%s*$", "%1") end
+	return line
+end
+
+local function centerPrint(text, ny)
+	if type(text) == "table" then for _, v in pairs(text) do centerPrint(v) end
+	else
+		local x, y = term.getCursorPos()
+		local w, h = term.getSize()
+		term.setCursorPos(w/2 - text:len()/2 + (#text % 2 == 0 and 1 or 0), ny or y)
+		print(text)
+	end
+end
+
+
+--  -------- Updating
+
+local function download(url, path)
+	for i = 1, 3 do
+		local response = http.get(url)
+		if response then
+			local data = response.readAll()
+			response.close()
+			if path then
+				local f = io.open(path, "w")
+				f:write(data)
+				f:close()
+			end
+			return true
+		end
+	end
+
+	return false
+end
+
+local function updateClient()
+	local updateLocation = "/.lightshot-update"
+	fs.delete(updateLocation)
+
+	download(lightshotURL, updateLocation)
+	local a = io.open(updateLocation, "r")
+	local b = io.open(lightshotLocation, "r")
+	local new = a:read("*a")
+	local cur = b:read("*a")
+	a:close()
+	b:close()
+
+	if cur ~= new then
+		fs.delete(lightshotLocation)
+		fs.move(updateLocation, lightshotLocation)
+		return true
+	else
+		fs.delete(updateLocation)
+		return false
+	end
+end
+
+
+--  -------- Compression
+
+local sD = {{}}
+local cD = {}
+
+local function proccessFunction(data)
+	if data:len() < 8 then
+		if data:sub(-1,-1) == "]" then return "[[" .. data .. "] .. \"]\""
+		else return "[[" .. data .. "]]" end
+	end
+	if cD[v] then return cD[v] end
+	for k, v in pairs(sD[#sD]) do
+		if v == data then
+			cD[v] = ("sD[" .. #sD .. "][" .. k .. "]")
+			return("sD[" .. #sD .. "][" .. k .. "]")
+		end
+	end
+	table.insert(sD[#sD], data)
+	local returnData = ("sD[".. #sD .. "][" .. #sD[#sD] .. "]")
+	if #sD[#sD] > loopRate then sD[#sD + 1] = {} end
+	return returnData
+end
+
+
+--  -------- Terminal Override
+
+local function add(...)
+	if not handle then
+		if fs.exists(recordLocation) then
+			handle = io.open(recordLocation, "a")
+		else
+			handle = io.open(recordLocation, "w")
+		end
+	end
+
+	for _, v in pairs({...}) do
+		handle:write(v)
+	end
+end
+
+local bg, tc, blnk = -1, -1, nil
+for k, v in pairs(term.native) do oldTerm[k] = v end
+
+newTerm.write = function(...)
+	local text = ""
+	for k, v in pairs({...}) do text = text .. tostring(v) end
+
+	local a = ""
+	if not paused and os.clock() - clock > 0 then
+		a = "sp(" .. os.clock() - clock .. ") "
+	end
+	text = proccessFunction(text)
+	local b = "c(" .. text .. ")\n"
+
+	add(a .. b)
+	clock = os.clock()
+
+	if not nfaRecording then return oldTerm.write(...) end
+end
+
+newTerm.setCursorPos = function(x, y)
+	local a = ""
+	if not paused and os.clock() - clock > 0 then
+		a = "sp(" .. os.clock() - clock .. ") "
+	end
+	add(a .. "d(" .. tostring(x) .. ", " .. tostring(y) .. ")\n")
+	clock = os.clock()
+
+	return oldTerm.setCursorPos(x, y)
+end
+
+newTerm.getCursorPos = function(...) return oldTerm.getCursorPos(...) end
+
+newTerm.setBackgroundColor = function(col)
+	if bg ~= col then
+		local a = ""
+		if not paused and not nfaRecording and os.clock() - clock > 0 then
+			a = "sp(" .. os.clock() - clock .. ") "
+		end
+
+		add(a .. "e(" .. tostring(col) .. ")\n")
+		clock = os.clock()
+		bg = col
+	end
+
+	return oldTerm.setBackgroundColor(col)
+end
+
+newTerm.setTextColor = function(col)
+	if tc ~= col then
+		local a = ""
+		if not paused and not nfaRecording and os.clock() - clock > 0 then
+			a = "sp(" .. os.clock() - clock .. ") "
+		end
+
+		add(a .. "f(" .. tostring(col) .. ")\n")
+		clock = os.clock()
+		tc = col
+	end
+
+	return oldTerm.setTextColor(col)
+end
+
+newTerm.setBackgroundColour = function(col) return term.setBackgroundColor(col) end
+newTerm.setTextColour = function(col) return term.setTextColor(col) end
+
+newTerm.clear = function(...)
+	local a = ""
+	if not paused and os.clock() - clock > 0 then
+		a = "sp(" .. os.clock() - clock .. ") "
+	end
+	add(a .. "g()\n")
+	clock = os.clock()
+
+	return oldTerm.clear(...)
+end
+
+newTerm.clearLine = function(...)
+	local a = ""
+	if not paused and os.clock() - clock > 0 then
+		a = "sp(" .. os.clock() - clock .. ") "
+	end
+	add(a .. "h()\n")
+	clock = os.clock()
+
+	return oldTerm.clearLine(...)
+end
+
+newTerm.setCursorBlink = function(flag)
+	if flag ~= blnk then
+		local a = ""
+		if not paused and os.clock() - clock > 0 then
+			a = "sp(" .. os.clock() - clock .. ") "
+		end
+		add(a .. "i(" .. tostring(flag) .. ")\n")
+		clock = os.clock()
+		blnk = flag
+	end
+
+	return oldTerm.setCursorBlink(flag)
+end
+
+newTerm.scroll = function(n)
+	local a = ""
+	if not paused and os.clock() - clock > 0 then
+		a = "sp(" .. os.clock() - clock .. ") "
+	end
+	add(a .. "j(" .. tostring(n) .. ")\n")
+	clock = os.clock()
+
+	return oldTerm.scroll(n)
+end
+
+newTerm.getSize = function(...) return oldTerm.getSize(...) end
+newTerm.redirect = function(...) return oldTerm.redirect(...) end
+newTerm.restore = function(...) return oldTerm.restore(...) end
+newTerm.isColor = function(...) return oldTerm.isColor and oldTerm.isColor(...) end
+newTerm.isColour = function(...) return term.isColor(...) end
+
+
+--  -------- Recording
+
+local function record(location)
+	while true do
+		local e, key = os.pullEventRaw()
+		if (e == "key" and key == 59) or e == event_exitRecording or e == "terminate" then
+			local a = ""
+			if os.clock() - clock > 0 then a = "sp(" .. os.clock() - clock .. ") " end
+			add(a)
+
+			add("\n\nterm.setCursorBlink(false)\n")
+			add("if term.isColor() then term.setTextColor(colors.yellow)\n")
+			add("else term.setTextColor(colors.white) end\n")
+			add("term.setBackgroundColor(colors.black)\n")
+			add("term.clear()\n")
+			add("term.setCursorPos(1, 1)\n")
+			add("print(\"End of Recording!\")\n")
+
+			local sd = "local sD = " .. textutils.serialize(sD) .. "\n"
+
+			term.restore()
+			term.setCursorBlink(false)
+
+			handle:close()
+			handle = nil
+			local f = io.open(recordLocation, "r")
+			local ncont = f:read("*a")
+			f:close()
+
+			ncont = ncont:gsub("%-%- sD here...\n", sd)
+			local f = io.open(location, "w")
+			f:write(ncont)
+			f:close()
+			fs.delete(recordLocation)
+
+			break
+		elseif e == "key" and key == 61 then
+			paused = not paused
+			if paused then
+				add("sp(2)\n")
+			end
+		end
+	end
+end
+
+
+--  -------- Movie
+
+local function loadNfa(path)
+	local ret = {}
+	if fs.exists(path) and not fs.isDir(path) then
+		local f = io.open(path, "r")
+		local l = f:read("*l")
+		local curFrame = ""
+		while l do
+			if l ~= "" and l ~= "~" then curFrame = curFrame .. l .. "\n"
+			elseif l == "~" then
+				table.insert(ret, curFrame)
+				curFrame = ""
+			end
+			l = f:read("*l")
+		end
+		f:close()
+	end
+
+	return ret
+end
+
+local function movie(location, duration)
+	nfaRecording = true
+	local frames = loadNfa(location)
+	if frames ~= {} then
+		for i, v in ipairs(frames) do
+			term.setTextColor(colors.white)
+			term.setBackgroundColor(colors.black)
+			term.clear()
+
+			local tempImageLocation = "/.lightshot-temp-image"
+			local f = io.open(tempImageLocation, "w")
+			f:write(v)
+			f:close()
+			local a = paintutils.loadImage(tempImageLocation)
+			paintutils.drawImage(a, 1, 1)
+			fs.delete(tempImageLocation)
+			add("sp(" .. duration .. ")\n")
+		end
+
+		add("sp(" .. duration .. ")\n")
+	end
+
+	add("\n\nterm.setCursorBlink(false)\n")
+	add("if term.isColor() then term.setTextColor(colors.yellow)\n")
+	add("else term.setTextColor(colors.white) end\n")
+	add("term.setBackgroundColor(colors.black)\n")
+	add("term.clear()\n")
+	add("term.setCursorPos(1, 1)\n")
+	add("print(\"The End! :D\")\n")
+
+	nfaRecording = false
+	term.restore()
+	term.setCursorBlink(false)
+	if term.isColor() then term.setTextColor(colors.yellow)
+	else term.setTextColor(colors.white) end
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	term.setCursorPos(1, 1)
+	print("Movie Recorded Successfully!")
+
+	handle:close()
+	handle = nil
+	local f = io.open(recordLocation, "r")
+	local ncont = f:read("*a")
+	f:close()
+
+	local sd = "local sD = " .. textutils.serialize(sD) .. "\n"
+	ncont = ncont:gsub("%-%- sD here...\n", sd)
+	local f = io.open(location, "w")
+	f:write(ncont)
+	f:close()
+	fs.delete(recordLocation)
+end
+
+
+--  -------- Main
+
+local theme = {}
+if term.isColor and term.isColor() then
+	theme = {
+		["prompt"] = "cyan",
+		["promptHighlight"] = "lightBlue",
+		["textColor"] = "white",
+	}
+else
+	theme = {
+		["prompt"] = "black",
+		["promptHighlight"] = "black",
+		["textColor"] = "white",
+	}
+end
+
+local function drawButton(v, sel)
+	if sel then term.setBackgroundColor(v.highlight or colors[theme.promptHighlight])
+	else term.setBackgroundColor(v.bg or colors[theme.prompt]) end
+	term.setTextColor(v.tc or colors[theme.textColor])
+	for i = -1, 1 do
+		term.setCursorPos(v[2], v[3] + i)
+		term.write(string.rep(" ", v[1]:len() + 4))
+	end
+
+	term.setCursorPos(v[2], v[3])
+	if sel then
+		term.setBackgroundColor(v.highlight or colors[theme.promptHighlight])
+		term.write(" > ")
+	else term.write(" - ") end
+	term.write(v[1] .. " ")
+end
+
+local function prompt(list, dir)
+	local function draw(sel)
+		for i, v in ipairs(list) do
+			if i == sel then term.setBackgroundColor(v.highlight or colors[theme.promptHighlight])
+			else term.setBackgroundColor(v.bg or colors[theme.prompt]) end
+			term.setTextColor(v.tc or colors[theme.textColor])
+			for i = -1, 1 do
+				term.setCursorPos(v[2], v[3] + i)
+				term.write(string.rep(" ", v[1]:len() + 4))
+			end
+
+			term.setCursorPos(v[2], v[3])
+			if i == sel then
+				term.setBackgroundColor(v.highlight or colors[theme.promptHighlight])
+				term.write(" > ")
+			else term.write(" - ") end
+			term.write(v[1] .. " ")
+		end
+	end
+
+	local sel = 1
+	draw(sel)
+
+	while true do
+		local e, but, x, y = os.pullEvent()
+		if e == "key" and but == 28 then return list[sel][1]
+		elseif e == "key" and but == 200 and sel > 1 then
+			sel = sel - 1
+			draw(sel)
+		elseif e == "key" and but == 208 and ((err == true and sel < #list - 1) or (sel < #list)) then
+			sel = sel + 1
+			draw(sel)
+		elseif e == "key" and but == 203 and sel > 2 then
+			sel = sel - 2
+			draw(sel)
+		elseif e == "key" and but == 205 and sel < 3 then
+			sel = sel + 2
+			draw(sel)
+		elseif e == "mouse_click" then
+			for i, v in ipairs(list) do
+				if x >= v[2] - 1 and x <= v[2] + v[1]:len() + 3 and y >= v[3] - 1 and y <= v[3] + 1 then
+					return list[i][1]
+				end
+			end
+		end
+	end
+end
+
+local function menu()
+	term.setBackgroundColor(colors.gray)
+	term.setTextColor(colors.white)
+	term.clear()
+	term.setCursorPos(1, 1)
+
+	term.setBackgroundColor(colors.lightGray)
+	for i = 2, 4 do term.setCursorPos(1, i) term.clearLine() end
+	term.setCursorPos(3, 3)
+	term.write("Lightshot " .. version)
+
+	local opt = prompt({{"Record a Video", w/2 - 16, 9}, {"Record an Animation", w/2 - 21, 13},
+		{"Update Lightshot", w/2 + 4, 9}, {"Exit", w/2 + 4, 13, bg = (term.isColor and term.isColor())
+		and colors.red or colors.black, highlight = (term.isColor and term.isColor()) and colors.pink
+		or colors.black}}, "vertical")
+	if opt == "Record a Video" or opt == "Record an Animation" then
+		term.setBackgroundColor(colors.gray)
+		for i = 7, 14 do term.setCursorPos(1, i) term.clearLine() end
+		term.setBackgroundColor(colors.cyan)
+		for i = 8, 11 do term.setCursorPos(7, i) term.write(string.rep(" ", w - 14)) end
+		drawButton({"Control to Return to Menu", 7, 14}, true)
+		term.setBackgroundColor(colors.cyan)
+		term.setCursorPos(8, 9)
+		term.write("Where to save the recording?")
+		term.setCursorPos(9, 10)
+		term.write("/")
+		local loc = modRead({visibleLength = w - 14, exitOnKey = "control"})
+		if not loc or loc == "" then return "menu" end
+
+		term.setCursorPos(8, 9)
+		term.write(string.rep(" ", 28))
+		term.setCursorPos(8, 9)
+		loc = "/" .. loc
+		if fs.isReadOnly(loc) then term.write("File is Read Only!") sleep(1.6) return "menu"
+		elseif fs.isDir(loc) then term.write("Location is a directory!") sleep(1.6) return "menu"
+		elseif opt == "Record a Video" then
+			if fs.exists(loc) then fs.delete(loc) end
+			term.setTextColor(colors.white)
+			term.setBackgroundColor(colors.black)
+			term.clear()
+			term.setCursorPos(2, 5)
+			term.write("Press F1 to end the recording")
+			term.setCursorPos(2, 6)
+			term.write("Press F3 to pause or unpause the recording")
+
+			if term.isColor and term.isColor() then term.setTextColor(colors.yellow) end
+			for i = 1, 3 do
+				term.setCursorPos(2, 3)
+				term.clearLine()
+				term.write("Recording in " .. 4 - i .. "...")
+				sleep(1)
+			end
+
+			return "record", loc
+		elseif opt == "Record an Animation" then
+			if loc:sub(-4, -1) ~= ".nfa" then
+				term.write("File Not An nPaintPro Animation!")
+				sleep(1.6)
+				return "menu"
+			end
+
+			term.setCursorPos(8, 9)
+			term.write("Duration between frames (seconds):")
+			term.setCursorPos(9, 10)
+			term.write(string.rep(" ", w - 16))
+			term.setCursorPos(9, 10)
+			local dur = modRead({visibleLength = w - 14, exitOnKey = "control"})
+			if not dur or dur == "" then return "menu" end
+
+			term.setCursorPos(8, 9)
+			term.write(string.rep(" ", 38))
+			term.setCursorPos(8, 9)
+			dur = tonumber(dur)
+			if not dur then term.write("Duration must be an integer!") sleep(1.6) return "menu"
+			else return "tomovie", loc, dur end
+		end
+	elseif opt == "Update Lightshot" then
+		term.setTextColor(colors.white)
+		term.setBackgroundColor(colors.lightGray)
+		term.setCursorPos(3, 3)
+		term.clearLine()
+		term.write("Checking for Updates...")
+		term.setCursorPos(3, 3)
+		if updateClient() then
+			term.clearLine()
+			term.write("Updated!")
+			sleep(1.6)
+			opt = "Exit"
+		else
+			term.clearLine()
+			term.write("No Updates Found!")
+			sleep(1.6)
+			return "menu"
+		end
+	end if opt == "Exit" then return nil end
+end
+
+local function main()
+	local action, location, duration = "menu", nil, nil
+	while action == "menu" do action, location, duration = menu() end
+
+	if action and location then
+		clock = os.clock()
+		add(recordHeader)
+		term.redirect(newTerm)
+
+		term.setTextColor(colors.white)
+		term.setBackgroundColor(colors.black)
+		term.clear()
+		term.setCursorPos(1, 1)
+		if action == "record" then
+			parallel.waitForAny(function()
+				record(location)
+			end, function()
+				term.setBackgroundColor(colors.black)
+				term.setTextColor(colors.white)
+				term.clear()
+				term.setCursorPos(1, 1)
+
+--[[
+				-- Run startup
+				if fs.exists("/startup") and not fs.isDir("/startup") then shell.run("/startup") end
+				term.setBackgroundColor(colors.black)
+				term.setTextColor(colors.white)
+				term.clear()
+				term.setCursorPos(1, 1)
+]]--
+
+				-- Run shell
+				shell.run("/rom/programs/shell")
+				os.queueEvent(event_exitRecording)
+			end)
+
+			if term.isColor() then term.setTextColor(colors.yellow)
+			else term.setTextColor(colors.white) end
+			term.setBackgroundColor(colors.black)
+			term.clear()
+			term.setCursorPos(2, 3)
+			print("Recording Saved!")
+			sleep(1.1)
+		elseif action == "tomovie" then
+			movie(location, duration)
+		end
+	else
+		return "exit"
+	end
+end
+
+-- Run
+local oldDir = shell.dir()
+while main() ~= "exit" do end
+shell.setDir(oldDir)
+
+-- Exit Message
+term.setBackgroundColor(colors.black)
+term.setTextColor(colors.white)
+term.clear()
+term.setCursorPos(1, 1)
+centerPrint("Thanks for Using Lightshot " .. version .. "!")
+centerPrint("Made by GravityScore and 1lann")

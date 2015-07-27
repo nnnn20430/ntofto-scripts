@@ -1,0 +1,5 @@
+to create a package database use pacman's repo-add utility
+$ repo-add private-repo.db.tar.gz *.pkg.tar.xz
+
+packages are built by creating a PKGBUILD file (man 5 PKGBUILD)
+and then using command makepkg

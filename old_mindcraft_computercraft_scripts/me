@@ -1,0 +1,3 @@
+ME = peripheral.wrap("right")
+local n = ME.listItems()
+for id,amount in pairs(n) do print(id, ":", amount) end

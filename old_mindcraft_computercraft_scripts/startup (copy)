@@ -1,0 +1,24 @@
+chat = peripheral.wrap("right")
+print('say "start" to start it')
+print('say "stop" to stop it')
+a = {}
+a[1] = "speaker_0"
+a[2] = "speaker_1"
+
+function speak()
+ while true do
+  e,player,message = os.pullEvent("chat") print(player..":"..message)
+  if message == "stop" then break end
+   for l,id in pairs(a) do
+   n = peripheral.wrap(id)
+   n.speak(message)
+   end
+  sleep(1)
+  end
+ end
+
+while true do
+  e,player,message = os.pullEvent("chat") print(player..":"..message)
+  if message == "start" then speak()
+  end
+end

@@ -1,0 +1,168 @@
+--[[
+
+  Installer program for ComputerCraft YouTube.
+
+--]]
+
+--[[ Variables ]]--
+local sourceFolder = '".ccYouTube"'
+screenX, screenY = term.getSize()
+tArgs = {...}
+if fs.exists(sourceFolder) and #tArgs == 0 then print("Source folder already exists;\nPlease use -redownload as the argument to delete the current source folder and download new; stopping") return end
+local backups = {}
+
+-- Tables
+local t_Folders = {
+	{ sFolderName = "apis", sPath = sourceFolder .. "/apis" },
+	{ sFolderName = "downloads", sPath = sourceFolder .. "/downloads" },
+	{ sFolderName = "logos", sPath = sourceFolder .. "/logos" },
+	{ sFolderName = "recycleBin", sPath = sourceFolder .. "/recycleBin" },
+}
+
+local t_NeededFiles = {
+	{ sType = "api", sUrl = "https://raw.github.com/remiX-/ccYouTube/master/apis/loadingScreen", sPath = sourceFolder .. "/apis/loadingScreen"},
+	{ sType = "api", sUrl = "https://raw.github.com/remiX-/ccYouTube/master/apis/extStrLib", sPath = sourceFolder .. "/apis/extStrLib"},
+	{ sType = "api", sUrl = "https://raw.github.com/remiX-/ccYouTube/master/apis/box", sPath = sourceFolder .. "/apis/box"},
+	{ sType = "logo", sUrl = "https://raw.github.com/remiX-/ccYouTube/master/logos/ccytLogo", sPath = sourceFolder .. "/logos/ccytLogo"},
+	{ sType = "logo", sUrl = "https://raw.github.com/remiX-/ccYouTube/master/logos/home", sPath = sourceFolder .. "/logos/home"},
+	{ sType = "file", sUrl = "https://raw.github.com/remiX-/ccYouTube/master/ComputerCraft%20YouTube", sPath = "ccYouTube"} 
+}
+
+local t_startLogo = {
+"                 f  f       eeeee   e      ",
+"                 f  f         e     e      ",
+" 9999  9999      ffff fff f f e e e eee eee",
+"9     9             f f f f f e e e e e e e",
+"9     9     ffff    f f f f f e e e e e eee",
+"9     9             f f f f f e e e e e e  ",
+" 9999  9999      ffff fff fff e eee eee eee",
+}
+--[[ End of Variables ]]--
+
+term.clear() term.setCursorPos(1, 1)
+
+term.setTextColour(colours.red)
+if not term.isColor() or turtle then
+	print("Error; Advanced Computer Required.")
+	term.setTextColour(colours.black)
+	return
+elseif not http then
+	print("Error; HTTP needs to be enabled.")
+	term.setTextColour(colours.black)
+	return
+end
+term.setTextColour(colours.black)
+
+local function colorW(...)
+	local curColor
+	for i=1, #arg do -- arg is ...
+		if type(arg[i]) == 'number' then
+			curColor = arg[i]
+		else
+			if curColor then
+				term.setTextColor(curColor)
+			end
+			write(arg[i])
+		end
+	end
+  print() -- this is a print function, so it needs a new line.
+end
+
+function printLogo()
+	local function hexLookup( char )
+		local value = tonumber(char, 16)
+		return (value and math.pow(2, value) or nil)
+	end
+	
+	local function pCent(text, yLine, nCol)
+		term.setCursorPos( ( screenX - #text ) / 2, yLine )
+		term.setTextColour(nCol)
+		write(text)
+	end
+	
+	term.setBackgroundColour(colours.white)
+	term.clear()
+	for i = 1, #t_startLogo do
+		term.setCursorPos(5, 3+i)
+		for z = 1, #t_startLogo[i] do
+			tmp = string.sub(t_startLogo[i], z, z)
+			if tmp == " " then
+				term.setBackgroundColour(colours.white)
+				write(' ')
+			else
+				term.setBackgroundColour(hexLookup(string.sub(t_startLogo[i], z, z)))
+				write(' ')
+			end
+		end
+		print()
+	end
+	term.setBackgroundColour(colours.white)
+	pCent("Initilizing Installer for CC YouTube ...", 15, colours.black)
+	pCent("by remiX", screenY, colours.cyan)
+	sleep(2)
+end
+
+term.setBackgroundColour(colours.black)
+
+function initiate()
+	print("Creating/Downloading the required files ... \n")
+	-- Checking files and folders
+		if not fs.isDir(sourceFolder) then
+			fs.makeDir(sourceFolder)
+			colorW(colours.yellow, "[", colours.red, "FOLDER", colours.yellow, "]  ", colours.cyan, sourceFolder)
+		end
+		for i = 1, #t_Folders do
+			if not fs.exists(t_Folders[i].sPath) then
+				fs.makeDir(t_Folders[i].sPath)
+				colorW(colours.yellow, "[", colours.red, "FOLDER", colours.yellow, "]  ", colours.cyan, t_Folders[i].sPath)
+			end
+		end
+		for i = 1, #t_NeededFiles do
+			if not fs.exists(t_NeededFiles[i].sPath) then
+				colorW(colours.yellow, "[", colours.lime, t_NeededFiles[i].sType, colours.yellow, "]", string.rep(" ", 8 - #t_NeededFiles[i].sType), colours.cyan, t_NeededFiles[i].sPath)
+				local response = http.get( t_NeededFiles[i].sUrl )
+				local fHandle = fs.open(t_NeededFiles[i].sPath, "w")
+				fHandle.write(response.readAll())
+				fHandle.close()
+			end
+		end
+end
+
+--[[ Main part of the installer ]]--
+printLogo()
+
+term.setBackgroundColour(colours.black)
+term.setTextColour(colours.red)
+term.setCursorPos(1, 1)
+term.clear()
+if #tArgs == 1 and tArgs[1] == "-redownload" then
+local fileList = fs.list(sourceFolder .. "/downloads/" )
+	if #fileList > 0 then
+		print( "Backing up current videos ..." )
+		for i, v in pairs( fileList ) do
+			local f = fs.open( sourceFolder .. "/downloads/" .. v, "r" )
+			table.insert( backups, {
+				name = v,
+				content = f.readAll()
+			})
+			f.close()
+		end
+		print( '\nBacked up ' .. #fileList .. ' files.\n' )
+	end
+	sleep(0.5)
+	fs.delete(sourceFolder)
+	fs.delete("ccYouTube")
+end
+
+initiate()
+
+if #tArgs == 1 and tArgs[1] == "-redownload" and #backups ~= 0 then
+	print( "\nCopying backed up files ... " )
+	for i, v in pairs(backups) do
+		local f = fs.open( sourceFolder .. '/downloads/' .. v.name, "w" )
+		f.write( v.content )
+		f.close()
+	end
+end
+
+print("\nDone!\nType ccYouTube to start!\n")

@@ -1,0 +1,199 @@
+--[[
+fire effect
+code by GopherAtl, 2013
+
+No rights reserved, DWYW. 
+--]]
+
+local w,h=term.getSize()
+
+local dithers={
+ " ",
+ ".",
+ "-",
+ "+",
+ "%",
+ "*",
+ "#",
+ "@",
+}
+
+
+local ranges= {
+  { colors.black, colors.gray, },
+  { colors.gray, colors.red, },
+  { colors.red, colors.orange, },
+  { colors.orange, colors.yellow, },
+}
+
+local coolWeight=75
+
+if not term.isColor() then
+  ranges={
+    { colors.black,colors.white },
+  }
+  coolWeight=25
+end
+
+local numDithers=(#dithers*2-1)
+local max_bright=#ranges*numDithers
+
+
+function genShaded(brightness)
+  --break into color group
+  local bgColor=colors.black
+  local fgColor=colors.black
+  local char=" "
+  
+  if brightness>=max_bright then
+    bgColor=ranges[#ranges][2]
+    fgColor=ranges[#ranges][1]
+  else
+    local dither=brightness%numDithers    
+    local range=(brightness-dither)/numDithers
+    local inv=false
+    bgColor=ranges[range+1][1]
+    fgColor=ranges[range+1][2]
+    if dither>=#dithers then
+      dither=2*#dithers-dither-1
+      local t=bgColor
+      bgColor=fgColor
+      fgColor=t      
+    end
+    char=dithers[dither+1]
+  end
+  
+  --[[term.setBackgroundColor(bgColor)
+  term.setTextColor(fgColor)
+  term.write(char)--]]
+  return bgColor,fgColor,char
+end
+
+local precalc_shade={}
+
+for i=0,max_bright do
+  precalc_shade[i]={genShaded(i)}
+end
+
+dither=true
+
+function drawShaded(bright)
+  bright=math.floor(bright+.5)
+  if bright>max_bright then
+    bright=max_bright
+  elseif bright<0 then
+    bright=0
+  end
+  local shading=precalc_shade[bright]
+  if shading==nil then
+    error("brightness "..bright.." invalid!")
+  end
+  term.setBackgroundColor(shading[1])
+  term.setTextColor(shading[2])
+  term.write(dither and shading[3] or " ")
+end
+
+local grid, gridB={},{}
+
+for y=1,h+1 do
+  grid[y]={}
+  gridB[y]={}
+  for x=1,w do
+    grid[y][x]=0
+  end
+end
+
+local coolingGrid={}
+
+for y=1,h*4 do
+  coolingGrid[y]={}
+  for x=1,w*2 do
+    coolingGrid[y][x]=0
+  end
+end
+
+function smooth(grid)
+  for y=0,(h*4-1) do
+    local up=(y-1)%(h*4)+1
+    local down=(y+1)%(h*4)+1
+    for x=0,(w*2-1) do
+      local left=(x-1)%(w*2)+1
+      local right=(x+1)%(w*2)+1
+      grid[y+1][x+1]=(grid[y+1][left]+grid[y+1][right]+grid[up][x+1]+grid[down][x+1])/4
+    end
+  end 
+end
+
+for i=1,1.6*w*h do
+  coolingGrid[math.random(1,h*4)][math.random(1,w*2)]=coolWeight
+end
+
+for i=1,5 do
+  smooth(coolingGrid)
+end
+
+coolingOffsetY=0
+coolingOffsetX=0
+
+
+function smoothFlame(grid)
+  for y=1,h do
+    local up=math.max(0,y-1)+1
+    local down=math.min((h-1),(y+1))+1
+    for x=0,(w-1) do
+      local left=(x-1)%w+1
+      local right=(x+1)%w+1
+      grid[y][x+1]=(grid[y+1][left]+grid[y+1][right]+grid[up][x+1]+grid[down][x+1])/4-coolingGrid[math.floor((y-1+coolingOffsetY)%(h*4))+1][math.floor((x+coolingOffsetX)%(w*2))+1]
+    end
+  end 
+end
+
+function draw()
+  for y=1,h do
+    for x=1,w do
+      term.setCursorPos(x,y)
+      drawShaded(grid[y][x]/2)
+    end
+  end
+end
+
+
+
+
+for x=1,w do
+  grid[h+1][x]=max_bright*2
+end
+
+for i=1,w do
+  local x=math.random(1,w)
+  grid[h+1][x]=max_bright*3
+end
+
+for i=1,h+1 do
+  smoothFlame(grid)
+end
+  
+
+local tick=os.startTimer(0)
+while true do
+  local e={os.pullEvent()}
+  if e[1]=="timer" then
+    draw()
+    smoothFlame(grid)
+    for i=1,1 do
+      grid[h+1][math.random(1,w)]=max_bright*3
+    end
+    coolingOffsetY=(coolingOffsetY+1)%(h*4)
+    coolingOffsetX=(coolingOffsetX+math.random(-2,3)/2)%(w*2)
+    tick=os.startTimer(0)
+  elseif e[1]=="char" then
+    local ch=e[2]:lower()
+    if ch=="d" then
+      dither=not dither
+    elseif ch=="q" then
+      break
+    end
+  elseif e[1]=="monitor_touch" then
+    dither=not dither
+  end
+end

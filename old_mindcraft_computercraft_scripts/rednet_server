@@ -1,0 +1,86 @@
+local function getDeviceSide(deviceType)
+  local lstSides = {"left","right","up","down","front","back"};
+  for i, side in pairs(lstSides) do
+    if (peripheral.isPresent(side)) then
+      if (peripheral.getType(side) == string.lower(deviceType)) then
+        return side;
+      end
+    end
+  end -- for-do
+  return nil;
+end
+
+function split(str, pat)
+  local t = { }
+  local fpat = "(.-)"..pat
+  local last_end = 1
+  local s, e, cap = str:find(fpat, 1)
+  while s do
+    if s ~= 1 or cap ~= "" then
+      table.insert(t,cap)
+    end
+    last_end = e+1
+    s, e, cap = str:find(fpat, last_end)
+  end
+  if last_end <= #str then
+    cap = str:sub(last_end)
+    table.insert(t, cap)
+  end
+  return t
+end
+
+function writeUpload()
+ f = fs.open(newFile, "w")
+ f.write(message)
+ f.close()
+ rednet.send(compID, "!requested_upload_complete.!")
+end
+
+function upload()
+ s = split(message, "!request_upload.!")
+ newFile = s[1]
+ compID = n
+ rednet.send(n, "!request_upload_accepted.!")
+ local t = 0
+ while true do
+  t = t + 1
+  n, message = rednet.receive(1)
+  if message ~= nil then
+  if n == compID then writeUpload() end end
+  if t == 5 then
+  return
+  end
+ end
+end
+
+local side = getDeviceSide("Modem")
+rednet.open(side)
+print("Hosting")
+print("Press and hold 'Q' to stop.")
+while true do
+ while true do
+  n, message = rednet.receive(1)
+  if message ~= nil then
+  if string.find(message, "!request_download.!") then break end
+  if string.find(message, "!request_upload.!") then upload() end end
+  os.startTimer(0.3)
+  local event,key = os.pullEvent()
+  if key == 16 then
+  rednet.close(side)
+  return
+  end
+ end
+
+ if message ~= nil then
+ s = split(message, "!request_download.!")
+ sFile = s[1]
+ sPath = shell.resolve( sFile )
+ end
+
+ if fs.exists(sPath) then
+ local file = fs.open( sPath, "r" )
+ local sText = file.readAll()
+ file.close()
+ rednet.send(n, "!requested_download.!"..tostring(sText))
+ end
+end

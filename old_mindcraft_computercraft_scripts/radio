@@ -1,0 +1,293 @@
+local commandScriptUrl="http://localhost/pitchfork/player/command.php"
+local commandScriptPassword="TurtleLogin_asdasq%$@23555aasH"
+local default_volume=15
+local default_side="right"
+local running=true
+local playing=true
+local current_volume=default_volume
+local termWidth, termHeight = term.getSize()
+local status="Playing"
+
+local N_LineToStartWriting = 4
+local N_SongToStartWriting = 0
+local N_SelectedSong = 0
+local N_DisplaySongs = termHeight-(1+N_LineToStartWriting)
+local N_Processed = 0
+local Drawing = true
+term.clear()
+term.setCursorBlink(false)
+redstone.setAnalogOutput(default_side, 1)
+sleep(0.5)
+redstone.setAnalogOutput(default_side, 15)
+
+function UpdateSongList(rawData)
+ local songs=""
+ if rawData == nil then
+  songs = http.get(commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&listsongsCC").readAll()
+ else
+  songs = rawData
+ end
+ songsArray={}
+ nloops_song=0
+ for song in string.gmatch(songs, "[^,]+:[^,]+") do
+  nloops_songData = 0
+  songDataArray={}
+  for songData in string.gmatch(song, "[^:]+") do
+   songDataArray[nloops_songData] = songData
+   nloops_songData=nloops_songData+1
+  end
+  songsArray[nloops_song]=songDataArray
+  nloops_song=nloops_song+1
+ end
+ N_songs=nloops_song-1
+end
+
+function GetCurrentSong()
+ N_CurrentSong = http.get(commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&currentsongCC").readAll()
+end
+
+function ColorsReset()
+ term.setTextColor(colors.white)
+ term.setBackgroundColor(colors.black)
+end
+
+function retunSpace(numofneededspace)
+ local space=""
+ local nloops=0
+ while true do
+  space=space.." "
+  nloops=nloops+1
+  if nloops >= numofneededspace then break end
+ end
+ return space
+end
+
+function setColors(textColor, BackgroundColor)
+ term.setTextColor(textColor)
+ term.setBackgroundColor(BackgroundColor)
+end
+
+function colorFillLine(color)
+ local currentx, currenty = term.getCursorPos()
+ setColors(color, color)
+ term.write(""..retunSpace(termWidth))
+ term.setCursorPos(1, currenty)
+end
+
+function writeToLineEnd(text)
+ local currentx, currenty = term.getCursorPos()
+ term.setCursorPos(termWidth-string.len(text), currenty)
+ term.write(text)
+end
+
+function CollectArguments(...)
+ return arg
+end
+
+function Reconstruct(table)
+ newTable={}
+ for key, value in pairs(table) do
+  newTable[key]=value
+ end
+ return newTable
+end
+
+function DrawBackground()
+ term.setCursorPos(1,1)
+ colorFillLine(colors.yellow)
+ term.setCursorPos(1,2)
+ colorFillLine(colors.yellow)
+ term.setCursorPos(1,3)
+ colorFillLine(colors.yellow)
+ songListBgDrawn=0
+ while true do
+  term.setCursorPos(1, 4+songListBgDrawn)
+  colorFillLine(colors.orange)
+  if songListBgDrawn==N_DisplaySongs then break end
+  songListBgDrawn=songListBgDrawn+1
+ end
+ term.setCursorPos(1, termHeight)
+ colorFillLine(colors.red)
+end
+
+function DrawInterface()
+
+ if N_SongToStartWriting+N_DisplaySongs < N_SelectedSong then
+  N_SongToStartWriting=N_SongToStartWriting+(N_SelectedSong-(N_DisplaySongs+N_SongToStartWriting))
+ end
+
+ if N_SongToStartWriting > N_SelectedSong then
+  N_SongToStartWriting=N_SongToStartWriting+(N_SelectedSong-N_SongToStartWriting)
+ end
+
+ while Drawing do
+  term.setCursorPos(1, N_LineToStartWriting+N_Processed)
+  if N_Processed<=N_songs then
+   setColors(colors.black, colors.orange)
+   if N_SelectedSong-N_SongToStartWriting == N_Processed and N_CurrentSong-N_SongToStartWriting == N_Processed then
+    setColors(colors.red, colors.orange)
+   elseif N_SelectedSong-N_SongToStartWriting == N_Processed then
+    setColors(colors.white, colors.orange)
+   elseif N_CurrentSong-N_SongToStartWriting == N_Processed then
+    setColors(colors.blue, colors.orange)
+   end
+   term.write(""..songsArray[N_SongToStartWriting+N_Processed][0]..retunSpace(termWidth-string.len(songsArray[N_SongToStartWriting+N_Processed][0])))
+   if N_Processed==N_DisplaySongs then Drawing=false end
+   N_Processed=N_Processed+1
+  else
+   Drawing=false
+  end
+  ColorsReset()
+ end
+
+ term.setCursorPos(1,1)
+ setColors(colors.black, colors.yellow)
+ print("Status="..status.." ")
+ term.setCursorPos(1,1)
+ writeToLineEnd("Up-Down arrows: Volume control")
+ term.setCursorPos(1,2)
+ setColors(colors.black, colors.yellow)
+ print("Volume="..tonumber(current_volume).."-15 ")
+ term.setCursorPos(1,2)
+ writeToLineEnd("Left-Right arrows: Song navigation")
+ term.setCursorPos(1,3)
+ setColors(colors.black, colors.yellow)
+ writeToLineEnd("Space: Play/Pause, Enter: Set song, Q: Quit radio")
+ ColorsReset()
+
+ term.setCursorPos(1, termHeight)
+ setColors(colors.white, colors.red)
+ term.write("Current song: "..songsArray[tonumber(N_CurrentSong)][0]..retunSpace(termWidth-string.len(songsArray[tonumber(N_CurrentSong)][0])))
+ ColorsReset()
+ term.setCursorPos(1,1)
+end
+
+local yieldTime -- variable to store the time of the last yield
+local function yield()
+        if yieldTime then -- check if it already yielded
+                if os.clock() - yieldTime > 2 then -- if it were more than 2 seconds since the last yield
+                        os.queueEvent("someFakeEvent") -- queue the event
+                        os.pullEvent("someFakeEvent") -- pull it
+                        yieldTime = nil -- reset the counter
+                end
+        else
+                yieldTime = os.clock() -- store the time
+        end
+end
+
+function exit()
+ os.startTimer(1)
+ os.pullEvent("timer")
+ term.clear()
+ running=false
+ redstone.setOutput(default_side, false)
+ return
+end
+
+
+updateLoopNumberTracker=0
+UpdateLoopQueueNumber=0
+
+UpdateSongList()
+GetCurrentSong()
+if N_songs <= -1 then term.clear(); error('No songs') end
+if N_CurrentSong == "f" then
+ http.request(commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&act=play&id="..songsArray[0][1])
+ N_CurrentSong = 0
+end
+DrawBackground()
+DrawInterface()
+
+loops=0
+SoundChange=1
+while running do
+ yield()
+ Drawing=true
+ N_Processed = 0
+
+ os.startTimer(1.50)
+ eventDataArray = CollectArguments(os.pullEvent())
+
+ if eventDataArray[1] == 'key' then
+  if eventDataArray[2] == 200 then
+   if current_volume ~= 15 then
+    current_volume=current_volume+1
+    SoundChange=1
+   end
+  end
+
+  if eventDataArray[2] == 208 then
+   if current_volume ~= 1 then
+    current_volume=current_volume-1
+    SoundChange=1
+   end
+  end
+
+  if eventDataArray[2] == 203 then
+   if N_SelectedSong ~= 0 then
+    N_SelectedSong=N_SelectedSong-1
+    DrawInterface()
+   end
+  end
+
+  if eventDataArray[2] == 205 then
+   if N_SelectedSong ~= N_songs then
+    N_SelectedSong=N_SelectedSong+1
+    DrawInterface()
+   end
+  end
+
+  if eventDataArray[2] == 28 then
+   http.request(commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&act=play&id="..songsArray[N_SelectedSong][1])
+  end
+ 
+  if eventDataArray[2] == 16 then
+   exit()
+  end
+
+  if eventDataArray[2] == 57 then
+   if playing == true then
+    playing = false
+   else
+    playing = true
+    redstone.setAnalogOutput(default_side, 1)
+    redstone.setAnalogOutput(default_side, 14)
+   end
+   SoundChange=1
+  end
+ end
+ if eventDataArray[1] == 'http_success' then
+  local url = eventDataArray[2]
+  local response = eventDataArray[3].readAll()
+  eventDataArray[3].close()
+  if url == commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&listsongsCC" then
+   UpdateSongList(response)
+  end
+  if url == commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&currentsongCC" then
+    N_CurrentSong = response
+  end
+  DrawInterface()
+ end
+
+ if SoundChange==1 then
+  if playing == true
+  then
+   status="Playing"
+   redstone.setAnalogOutput(default_side, current_volume)
+  else
+   status="Paused"
+   redstone.setOutput(default_side, false)
+  end
+  SoundChange=0
+  DrawInterface()
+ end
+
+
+ if updateLoopNumberTracker==50 then
+  UpdateLoopQueueNumber=UpdateLoopQueueNumber+1
+  if UpdateLoopQueueNumber == 1 then http.request(commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&listsongsCC") end
+  if UpdateLoopQueueNumber == 2 then http.request(commandScriptUrl.."?CClogin=true&password="..commandScriptPassword.."&currentsongCC") UpdateLoopQueueNumber=0 end
+  updateLoopNumberTracker=0
+ end
+ updateLoopNumberTracker=updateLoopNumberTracker+1
+end

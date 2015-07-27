@@ -1,0 +1,1379 @@
+
+--  
+--  Thunderhawk
+--  Made by GravityScore
+--  
+
+
+--  Variables
+
+local version = "3.0"
+
+local autoupdate = true
+local testing = false
+
+local username, password = nil, nil
+local w, h = term.getSize()
+
+local serverURL = "http://firewolfcc.com/thunderhawk/php/lua"
+local thunderhawkURL = "https://raw.github.com/GravityScore/Thunderhawk/master/thunderhawk.lua"
+local thunderhawkLocation = "/" .. shell.getRunningProgram()
+
+local function isAdvanced() return term.isColor and term.isColor() end
+
+
+--  Drawing
+
+local function centerPrint(text, ny)
+	local x, y = term.getCursorPos()
+	term.setCursorPos(math.ceil(w/2 - text:len()/2)   1, ny or y)
+	print(text)
+end
+
+local function drawButton(v, sel)
+	if sel then term.setBackgroundColor(v.highlight or colors.lightBlue)
+	else term.setBackgroundColor(v.bg or colors.cyan) end
+	term.setTextColor(v.tc or colors.white)
+	for i = -1, 1 do
+		term.setCursorPos(v[2], v[3]   i)
+		term.write(string.rep(" ", v[1]:len()   4))
+	end
+
+	term.setCursorPos(v[2], v[3])
+	if sel then
+		term.setBackgroundColor(v.highlight or colors.lightBlue)
+		term.write(" > ")
+	else term.write(" - ") end
+	term.write(v[1] .. " ")
+end
+
+local function title(t)
+	term.setTextColor(colors.white)
+	term.setBackgroundColor(colors.gray)
+	term.clear()
+
+	term.setBackgroundColor(colors.lightGray)
+	for i = 2, 4 do term.setCursorPos(1, i) term.clearLine() end
+	term.setCursorPos(3, 3)
+	term.write(t)
+end
+
+
+--  Prompt
+
+local function updateDisplayList(items, loc, len)
+	local ret = {}
+	for i = 1, len do if items[i   loc - 1] then table.insert(ret, items[i   loc - 1]) end end
+	return ret
+end
+
+local function prompt(list, dir)
+	local function draw(sel)
+		for i, v in ipairs(list) do
+			if i == sel then term.setBackgroundColor(v.highlight or colors.lightBlue)
+			else term.setBackgroundColor(v.bg or colors.cyan) end
+			term.setTextColor(v.tc or colors.white)
+			for i = -1, 1 do
+				term.setCursorPos(v[2], v[3]   i)
+				term.write(string.rep(" ", v[1]:len()   4))
+			end
+
+			term.setCursorPos(v[2], v[3])
+			if i == sel then
+				term.setBackgroundColor(v.highlight or colors.lightBlue)
+				term.write(" > ")
+			else term.write(" - ") end
+			term.write(v[1] .. " ")
+		end
+	end
+
+	local key1, key2 = dir == "horizontal" and 203 or 200, dir == "horizontal" and 205 or 208
+	local sel = 1
+	draw(sel)
+
+	while true do
+		local e, but, x, y = os.pullEvent()
+		if e == "key" and but == 28 then return list[sel][1]
+		elseif e == "key" and but == key1 and sel > 1 then
+			sel = sel - 1
+			draw(sel)
+		elseif e == "key" and but == key2 and ((err == true and sel < #list - 1) or (sel < #list)) then
+			sel = sel   1
+			draw(sel)
+		elseif e == "mouse_click" then
+			for i, v in ipairs(list) do
+				if x >= v[2] and x <= v[2]   v[1]:len()   3 and y >= v[3] - 1 and y <= v[3]   1 then
+					return list[i][1]
+				end
+			end
+		end
+	end
+end
+
+local function modRead(properties)
+	local w, h = term.getSize()
+	local defaults = {replaceChar = nil, history = nil, visibleLength = nil, textLength = nil,
+		liveUpdates = nil, exitOnKey = nil}
+	if not properties then properties = {} end
+	for k, v in pairs(defaults) do if not properties[k] then properties[k] = v end end
+	if properties.replaceChar then properties.replaceChar = properties.replaceChar:sub(1, 1) end
+	if not properties.visibleLength then properties.visibleLength = w end
+
+	local sx, sy = term.getCursorPos()
+	local line = ""
+	local pos = 0
+	local historyPos = nil
+
+	local function redraw(repl)
+		local scroll = 0
+		if properties.visibleLength and sx   pos > properties.visibleLength   1 then
+			scroll = (sx   pos) - (properties.visibleLength   1)
+		end
+
+		term.setCursorPos(sx, sy)
+		local a = repl or properties.replaceChar
+		if a then term.write(string.rep(a, line:len() - scroll))
+		else term.write(line:sub(scroll   1, -1)) end
+		term.setCursorPos(sx   pos - scroll, sy)
+	end
+
+	local function sendLiveUpdates(event, ...)
+		if type(properties.liveUpdates) == "function" then
+			local ox, oy = term.getCursorPos()
+			local a, data = properties.liveUpdates(line, event, ...)
+			if a == true and data == nil then
+				term.setCursorBlink(false)
+				return line
+			elseif a == true and data ~= nil then
+				term.setCursorBlink(false)
+				return data
+			end
+			term.setCursorPos(ox, oy)
+		end
+	end
+
+	local a = sendLiveUpdates("delete")
+	if a then return a end
+	term.setCursorBlink(true)
+	while true do
+		local e, but, x, y, p4, p5 = os.pullEvent()
+
+		if e == "char" then
+			local s = false
+			if properties.textLength and line:len() < properties.textLength then s = true
+			elseif not properties.textLength then s = true end
+
+			local canType = true
+			if not properties.grantPrint and properties.refusePrint then
+				local canTypeKeys = {}
+				if type(properties.refusePrint) == "table" then
+					for _, v in pairs(properties.refusePrint) do
+						table.insert(canTypeKeys, tostring(v):sub(1, 1))
+					end
+				elseif type(properties.refusePrint) == "string" then
+					for char in properties.refusePrint:gmatch(".") do
+						table.insert(canTypeKeys, char)
+					end
+				end
+				for _, v in pairs(canTypeKeys) do if but == v then canType = false end end
+			elseif properties.grantPrint then
+				canType = false
+				local canTypeKeys = {}
+				if type(properties.grantPrint) == "table" then
+					for _, v in pairs(properties.grantPrint) do
+						table.insert(canTypeKeys, tostring(v):sub(1, 1))
+					end
+				elseif type(properties.grantPrint) == "string" then
+					for char in properties.grantPrint:gmatch(".") do
+						table.insert(canTypeKeys, char)
+					end
+				end
+				for _, v in pairs(canTypeKeys) do if but == v then canType = true end end
+			end
+
+			if s and canType then
+				line = line:sub(1, pos) .. but .. line:sub(pos   1, -1)
+				pos = pos   1
+				redraw()
+			end
+		elseif e == "key" then
+			if but == keys.enter then break
+			elseif but == keys.left then if pos > 0 then pos = pos - 1 redraw() end
+			elseif but == keys.right then if pos < line:len() then pos = pos   1 redraw() end
+			elseif (but == keys.up or but == keys.down) and properties.history and
+					#properties.history > 0 then
+				redraw(" ")
+				if but == keys.up then
+					if historyPos == nil and #properties.history > 0 then
+						historyPos = #properties.history
+					elseif historyPos > 1 then
+						historyPos = historyPos - 1
+					end
+				elseif but == keys.down then
+					if historyPos == #properties.history then historyPos = nil
+					elseif historyPos ~= nil then historyPos = historyPos   1 end
+				end
+
+				if properties.history and historyPos then
+					line = properties.history[historyPos]
+					pos = line:len()
+				else line, pos = "", 0 end
+
+				redraw()
+				local a = sendLiveUpdates("history")
+				if a then return a end
+			elseif but == keys.backspace and pos > 0 then
+				redraw(" ")
+				line = line:sub(1, pos - 1) .. line:sub(pos   1, -1)
+				pos = pos - 1
+				redraw()
+				local a = sendLiveUpdates("delete")
+				if a then return a end
+			elseif but == keys.home then
+				pos = 0
+				redraw()
+			elseif but == keys.delete and pos < line:len() then
+				redraw(" ")
+				line = line:sub(1, pos) .. line:sub(pos   2, -1)
+				redraw()
+				local a = sendLiveUpdates("delete")
+				if a then return a end
+			elseif but == keys["end"] then
+				pos = line:len()
+				redraw()
+			elseif properties.exitOnKey then
+				if but == properties.exitOnKey or (properties.exitOnKey == "control" and
+						(but == 29 or but == 157)) then
+					term.setCursorBlink(false)
+					return nil
+				end
+			end
+		end
+
+		local a = sendLiveUpdates(e, but, x, y, p4, p5)
+		if a then return a end
+	end
+
+	term.setCursorBlink(false)
+	if line ~= nil then line = line:gsub("^%s*(.-)%s*$", "%1") end
+	return line
+end
+
+
+--  SHA-256
+
+local MOD = 2^32
+local MODM = MOD-1
+
+local function memoize(f)
+	local mt = {}
+	local t = setmetatable({}, mt)
+	function mt:__index(k)
+		local v = f(k)
+		t[k] = v
+		return v
+	end
+	return t
+end
+
+local function make_bitop_uncached(t, m)
+	local function bitop(a, b)
+		local res,p = 0,1
+		while a ~= 0 and b ~= 0 do
+			local am, bm = a % m, b % m
+			res = res   t[am][bm] * p
+			a = (a - am) / m
+			b = (b - bm) / m
+			p = p*m
+		end
+		res = res   (a   b) * p
+		return res
+	end
+	return bitop
+end
+
+local function make_bitop(t)
+	local op1 = make_bitop_uncached(t,2^1)
+	local op2 = memoize(function(a) return memoize(function(b) return op1(a, b) end) end)
+	return make_bitop_uncached(op2, 2 ^ (t.n or 1))
+end
+
+local bxor1 = make_bitop({[0] = {[0] = 0,[1] = 1}, [1] = {[0] = 1, [1] = 0}, n = 4})
+
+local function bxor(a, b, c, ...)
+	local z = nil
+	if b then
+		a = a % MOD
+		b = b % MOD
+		z = bxor1(a, b)
+		if c then z = bxor(z, c, ...) end
+		return z
+	elseif a then return a % MOD
+	else return 0 end
+end
+
+local function band(a, b, c, ...)
+	local z
+	if b then
+		a = a % MOD
+		b = b % MOD
+		z = ((a   b) - bxor1(a,b)) / 2
+		if c then z = bit32_band(z, c, ...) end
+		return z
+	elseif a then return a % MOD
+	else return MODM end
+end
+
+local function bnot(x) return (-1 - x) % MOD end
+
+local function rshift1(a, disp)
+	if disp < 0 then return lshift(a,-disp) end
+	return math.floor(a % 2 ^ 32 / 2 ^ disp)
+end
+
+local function rshift(x, disp)
+	if disp > 31 or disp < -31 then return 0 end
+	return rshift1(x % MOD, disp)
+end
+
+local function lshift(a, disp)
+	if disp < 0 then return rshift(a,-disp) end 
+	return (a * 2 ^ disp) % 2 ^ 32
+end
+
+local function rrotate(x, disp)
+    x = x % MOD
+    disp = disp % 32
+    local low = band(x, 2 ^ disp - 1)
+    return rshift(x, disp)   lshift(low, 32 - disp)
+end
+
+local k = {
+	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+	0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+	0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+	0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+	0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+	0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+	0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+	0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+	0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+	0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+	0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+	0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+}
+
+local function str2hexa(s)
+	return (string.gsub(s, ".", function(c) return string.format("x", string.byte(c)) end))
+end
+
+local function num2s(l, n)
+	local s = ""
+	for i = 1, n do
+		local rem = l % 256
+		s = string.char(rem) .. s
+		l = (l - rem) / 256
+	end
+	return s
+end
+
+local function s232num(s, i)
+	local n = 0
+	for i = i, i   3 do n = n*256   string.byte(s, i) end
+	return n
+end
+
+local function preproc(msg, len)
+	local extra = 64 - ((len   9) % 64)
+	len = num2s(8 * len, 8)
+	msg = msg .. "\128" .. string.rep("\0", extra) .. len
+	assert(#msg % 64 == 0)
+	return msg
+end
+
+local function initH256(H)
+	H[1] = 0x6a09e667
+	H[2] = 0xbb67ae85
+	H[3] = 0x3c6ef372
+	H[4] = 0xa54ff53a
+	H[5] = 0x510e527f
+	H[6] = 0x9b05688c
+	H[7] = 0x1f83d9ab
+	H[8] = 0x5be0cd19
+	return H
+end
+
+local function digestblock(msg, i, H)
+	local w = {}
+	for j = 1, 16 do w[j] = s232num(msg, i   (j - 1)*4) end
+	for j = 17, 64 do
+		local v = w[j - 15]
+		local s0 = bxor(rrotate(v, 7), rrotate(v, 18), rshift(v, 3))
+		v = w[j - 2]
+		w[j] = w[j - 16]   s0   w[j - 7]   bxor(rrotate(v, 17), rrotate(v, 19), rshift(v, 10))
+	end
+
+	local a, b, c, d, e, f, g, h = H[1], H[2], H[3], H[4], H[5], H[6], H[7], H[8]
+	for i = 1, 64 do
+		local s0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))
+		local maj = bxor(band(a, b), band(a, c), band(b, c))
+		local t2 = s0   maj
+		local s1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))
+		local ch = bxor (band(e, f), band(bnot(e), g))
+		local t1 = h   s1   ch   k[i]   w[i]
+		h, g, f, e, d, c, b, a = g, f, e, d   t1, c, b, a, t1   t2
+	end
+
+	H[1] = band(H[1]   a)
+	H[2] = band(H[2]   b)
+	H[3] = band(H[3]   c)
+	H[4] = band(H[4]   d)
+	H[5] = band(H[5]   e)
+	H[6] = band(H[6]   f)
+	H[7] = band(H[7]   g)
+	H[8] = band(H[8]   h)
+end
+
+local function sha256(msg)
+	msg = preproc(msg, #msg)
+	local H = initH256({})
+	for i = 1, #msg, 64 do digestblock(msg, i, H) end
+	return str2hexa(num2s(H[1], 4) .. num2s(H[2], 4) .. num2s(H[3], 4) .. num2s(H[4], 4) ..
+		num2s(H[5], 4) .. num2s(H[6], 4) .. num2s(H[7], 4) .. num2s(H[8], 4))
+end
+
+
+--  Utilities
+
+local function format(text, l)
+	if text:len() > l then return text:sub(1, l - 3) .. "..." end
+	return text
+end
+
+local function download(url, path)
+	for i = 1, 3 do
+		local response = http.get(url)
+		if response then
+			local data = response.readAll()
+			response.close()
+			if path then
+				local f = io.open(path, "w")
+				f:write(data)
+				f:close()
+			end
+			return true
+		end
+	end
+
+	return false
+end
+
+--  HTTP
+
+local function verify(user, pass)
+	if testing then return "true" end
+	local res = http.post(serverURL .. "/login.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass))
+	if res then
+		local a = res.readAll()
+		res.close()
+		return a
+	else return "Failed to connect" end
+end
+
+local function getinbox(user, pass)
+	if testing then
+		local t = {}
+		local cont = {}
+		for i = 1, 30 do table.insert(cont, "haiz " .. i) end
+		for i = 1, 10 do table.insert(t, {subject = "Hello " .. i, from = "1lann", content = cont}) end
+		return t
+	end
+
+	local res = http.post(serverURL .. "/inbox.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass) .. "&" ..
+		"folder=" .. textutils.urlEncode("inbox"))
+	if res then
+		local a = res.readAll()
+		res.close()
+		if a:find("true") then
+			a = textutils.unserialize(a:gsub("true\n", ""))
+			for i = 1, #a do
+				a[i].content = textutils.unserialize(a[i].content)
+			end
+			return a
+		else return a end
+	else return "Failed to Connect" end
+end
+
+local function getsent(user, pass)
+	if testing then return {} end
+	local res = http.post(serverURL .. "/sent.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass))
+	if res then
+		local a = res.readAll()
+		res.close()
+		if a:find("true") then
+			a = textutils.unserialize(a:gsub("true\n", ""))
+			for i = 1, #a do
+				a[i].content = textutils.unserialize(a[i].content)
+			end
+			return a
+		else return a end
+	else return "Failed to Connect" end
+end
+
+local function gettrash(user, pass)
+	if testing then return {} end
+	local res = http.post(serverURL .. "/inbox.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass) .. "&" ..
+		"folder=" .. textutils.urlEncode("trash"))
+	if res then
+		local a = res.readAll()
+		res.close()
+		if a:find("true") then
+			a = textutils.unserialize(a:gsub("true\n", ""))
+			for i = 1, #a do
+				a[i].content = textutils.unserialize(a[i].content)
+			end
+			return a
+		else return a end
+	else return "Failed to Connect" end
+end
+
+local function send(user, pass, message)
+	if testing then return "true" end
+	local res = http.post(serverURL .. "/send.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass) .. "&" ..
+		"to=" .. textutils.urlEncode(message.to) .. "&" ..
+		"subject=" .. textutils.urlEncode(message.subject) .. "&" ..
+		"message=" .. textutils.urlEncode(textutils.serialize(message.content)))
+	if res then
+		local a = res.readAll()
+		res.close()
+		return a
+	else return "Failed to Connect" end
+end
+
+local function trash(user, pass, id)
+	if testing then return "true" end
+	local res = http.post(serverURL .. "/trash.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass) .. "&" ..
+		"msgid=" .. textutils.urlEncode(tostring(id)))
+	if res then
+		local a = res.readAll()
+		res.close()
+		return a
+	else return "Failed to Connect" end
+end
+
+local function delete(user, pass, id)
+	if testing then return "true" end
+	local res = http.post(serverURL .. "/delete.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass) .. "&" ..
+		"msgid=" .. textutils.urlEncode(tostring(id)))
+	if res then
+		local a = res.readAll()
+		res.close()
+		return a
+	else return "Failed to Connect" end
+end
+
+local function emptytrash(user, pass)
+	if testing then return "true" end
+	local res = http.post(serverURL .. "/empty_trash.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass))
+	if res then
+		local a = res.readAll()
+		res.close()
+		return a
+	else return "Failed to Connect" end
+end
+
+local function deleteaccount(user, pass)
+	if testing then return "true" end
+	local res = http.post(serverURL .. "/delete_account.php",
+		"u=" .. textutils.urlEncode(user) .. "&" ..
+		"p=" .. textutils.urlEncode(pass))
+	if res then
+		local a = res.readAll()
+		res.close()
+		return a
+	else return "Failed to Connect" end
+end
+
+
+--  -------- Account
+
+local function account()
+	title("Thunderhawk " .. version .. " - Account Management")
+
+	local opt = prompt({{"Back", w/2 - 9, 9, bg = colors.pink, highlight = colors.red},
+		{"Logout", w/2   2, 9}, {"Delete Account", w/2 - 7, 14}}, "horizontal")
+	if opt == "Delete Account" then
+		term.setBackgroundColor(colors.gray)
+		term.setTextColor(colors.white)
+		term.setCursorPos(1, 17)
+		centerPrint("Deleting Account...")
+		local a = deleteaccount(username, password)
+
+		term.setCursorPos(1, 17)
+		term.clearLine()
+		if a == "true" then centerPrint("Account Deleted!")
+		elseif a == "false" then centerPrint("Deletion Failed!")
+		else centerPrint(a) end
+		sleep(1.6)
+		return "menu"
+	elseif opt == "Logout" then username, password = nil, nil return "menu"
+	elseif opt == "Back" then return "inbox" end
+end
+
+
+--  -------- Menu
+
+local menu = {"New", "Inbox", "Sent", "Trash", "Account", "Exit"}
+
+local function drawmenu()
+	term.setTextColor(colors.white)
+	term.setBackgroundColor(colors.lightGray)
+	term.setCursorPos(1, 1)
+	term.clearLine()
+	local curX = 0
+	for _, v in pairs(menu) do
+		term.setCursorPos(3   curX, 1)
+		term.write(v)
+		curX = curX   v:len()   3
+	end
+end
+
+local function triggermenu(cx, cy)
+	local curX = 0
+	local open = nil
+	for _, v in pairs(menu) do
+		if cx >= curX   3 and cx <= curX   v:len()   2 then
+			open = v
+			break
+		end
+		curX = curX   v:len()   3
+	end
+	local menux = curX   2
+	if not open then return false end
+
+	term.setCursorBlink(false)
+	term.setCursorPos(menux, 1)
+	term.setBackgroundColor(colors.gray)
+	term.write(string.rep(" ", open:len()   2))
+	term.setCursorPos(menux   1, 1)
+	term.write(open)
+	sleep(0.1)
+	drawmenu()
+
+	return open
+end
+
+
+--  -------- Compose
+
+local function compose(std)
+	local x, y = 1, 1
+	local offx, offy = 21, 6
+	local edw, edh = w - 23, h - 8
+	local scrolly = 0
+	local lines = {""}
+
+	local message = {from = username, to = "", subject = "", content = {""}}
+	if std and std.to then message.to = std.to end
+	if std and std.subject then message.subject = std.subject end
+
+	local function draw()
+		drawmenu()
+		term.setBackgroundColor(colors.white)
+		term.setTextColor(colors.black)
+
+		for i = 3, h - 1 do
+			term.setCursorPos(21, i)
+			term.write(string.rep(" ", w - 21))
+		end
+		term.setCursorPos(22, 4)
+		term.write("Subject: " .. format(message.subject, 19))
+		term.setCursorPos(22, 5)
+		term.write("     To: " .. format(message.to, 19))
+		term.setTextColor(colors.lightGray)
+		term.setCursorPos(21, 6)
+		term.write(string.rep("-", w - 21))
+		term.setCursorPos(24, 6)
+		term.write("[Cancel]")
+		term.setCursorPos(34, 6)
+		term.write("[Send]")
+		term.setTextColor(colors.black)
+
+		for i = 1, edh do
+			local a = lines[i   scrolly]
+			if a then
+				term.setCursorPos(offx, i   offy)
+				term.write(string.rep(" ", w - 21))
+				term.setCursorPos(offx   1, i   offy)
+				term.write(a)
+			end
+		end
+
+		term.setCursorPos(x   offx, y - scrolly   offy)
+	end
+
+	local function cursorLoc(x, y, force)
+		local sy = y - scrolly
+		local redraw = false
+		if sy < 1 then
+			scrolly = y - 1
+			sy = 1
+			redraw = true
+		elseif sy > edh then
+			scrolly = y - edh
+			sy = edh
+			redraw = true
+		end if redraw or force then draw() end
+		term.setCursorPos(x   offx, sy   offy)
+	end
+
+	local cancelled = nil
+	local function update(line, e, but, cx, cy)
+		if e == "mouse_click" then
+			if cy == 6 and cx >= 24 and cx <= 31 then
+				cancelled = "inbox"
+				return true
+			elseif cy == 1 then
+				local a = triggermenu(cx, cy)
+				if a then cancelled = a:lower() return true end
+			end
+		end
+	end
+
+	draw()
+	if message.subject == "" then
+		term.setCursorPos(31, 4)
+		message.subject = modRead({visibleLength = w - 2, textLength = 100, liveUpdates = update})
+		if cancelled then term.setCursorBlink(false) return cancelled end
+	end if message.to == "" then
+		term.setCursorPos(31, 5)
+		message.to = modRead({visibleLength = w - 2, textLength = 40, liveUpdates = update})
+		if cancelled then term.setCursorBlink(false) return cancelled end
+	end
+	draw()
+
+	term.setCursorBlink(true)
+	while true do
+		local e, but, cx, cy = os.pullEvent()
+		if e == "key" then
+			if but == 200 and y > 1 then
+				x, y = math.min(x, lines[y - 1]:len()   1), y - 1
+				cursorLoc(x, y)
+			elseif but == 208 and y < #lines then
+				x, y = math.min(x, lines[y   1]:len()   1), y   1
+				cursorLoc(x, y)
+			elseif but == 203 and x > 1 then
+				x = x - 1
+				cursorLoc(x, y)
+			elseif but == 205 and x < lines[y]:len()   1 then
+				x = x   1
+				cursorLoc(x, y)
+			elseif but == 28 or but == 156 and #lines < 50 then
+				local oldLine = lines[y]
+				lines[y] = lines[y]:sub(1, x - 1)
+				table.insert(lines, y   1, oldLine:sub(x, -1))
+				x, y = 1, y   1
+				cursorLoc(x, y, true)
+			elseif but == 14 then
+				if x > 1 then
+					lines[y], x = lines[y]:sub(1, x - 2) .. lines[y]:sub(x, -1), x - 1
+					cursorLoc(x, y, true)
+				elseif y > 1 then
+					local prevLen = lines[y - 1]:len()   1
+					lines[y - 1] = lines[y - 1] .. lines[y]:sub(1, edw - lines[y - 1]:len())
+					table.remove(lines, y)
+					x, y = prevLen, y - 1
+					cursorLoc(x, y, true)
+				end
+			end
+		elseif e == "char" then
+			if lines[y]:len() < edw then
+				lines[y], x = lines[y]:sub(1, x - 1) .. but .. lines[y]:sub(x, -1), x   but:len()
+				cursorLoc(x, y, true)
+			else
+				local l, nl = lines[y], lines[y]
+				local w = ""
+				for i = 1, l:len() do
+					if l:sub(i, i) == " " then w, nl = l:sub(i   1, -1) .. but, l:sub(1, i - 1) end
+				end
+
+				lines[y] = nl
+				table.insert(lines, y   1, w)
+				x, y = w:len()   1, y   1
+				cursorLoc(x, y, true)
+			end
+		elseif e == "mouse_click" then
+			if cy == 1 then
+				local a = triggermenu(cx, cy)
+				if a then term.setCursorBlink(false) return a:lower() end
+			elseif cy == 6 and cx >= 24 and cx <= 31 then
+				term.setCursorBlink(false)
+				return "inbox"
+			elseif cy == 6 and cx >= 34 and cx <= 39 then
+				message.content = lines
+				term.setCursorBlink(false)
+				term.setTextColor(colors.lightGray)
+				term.setCursorPos(35, 6)
+				term.write("Sending...]")
+				local a = send(username, password, message)
+				term.setCursorPos(35, 6)
+				term.write(string.rep("-", 11))
+				term.setCursorPos(35, 6)
+				if a == "true" then term.write("Sent!]")
+				elseif a == "false" then term.write("Failure!]")
+				else term.write(a .. "]") end
+				sleep(1.6)
+
+				return "inbox"
+			elseif cy > offy and cy < edh   offy   1 then
+				y = math.min(math.max(scrolly   cy - offy, 1), #lines)
+				x = math.min(math.max(cx - offx, 1), lines[y]:len()   1)
+				cursorLoc(x, y)
+			end
+		elseif e == "mouse_scroll" and but == -1 and scrolly > 0 then
+			scrolly = scrolly - 1
+			y = y - 1
+			x = math.min(lines[y]:len()   1, x)
+			draw()
+		elseif e == "mouse_scroll" and but == 1 and scrolly < #lines - edh then
+			scrolly = scrolly   1
+			y = y   1
+			x = math.min(lines[y]:len()   1, x)
+			draw()
+		end
+	end
+end
+
+
+--  -------- View
+
+local function view(mes, f)
+	term.setTextColor(colors.black)
+	term.setBackgroundColor(colors.white)
+	for i = 3, h - 1 do
+		term.setCursorPos(21, i)
+		term.write(string.rep(" ", w - 21))
+	end
+
+	local content = {}
+	for _, v in pairs(mes.content) do
+		local c = v:sub(1, w - 23):gsub("^%s*(.-)%s*$", "%1")
+		table.insert(content, c)
+		if v:len() > w - 23 then
+			local d = v:sub(w - 22, -1):gsub("^%s*(.-)%s*$", "%1")
+			table.insert(content, d)
+		end
+	end
+
+	term.setCursorPos(22, 4)
+	term.write("Subject: " .. format(mes.subject, w - 32))
+	term.setCursorPos(22, 5)
+	if f == "sent" then term.write("     To: " .. format(mes.from, w - 32))
+	else term.write("   From: " .. format(mes.from, w - 32)) end
+	term.setTextColor(colors.lightGray)
+	term.setCursorPos(21, 6)
+	term.write(string.rep("-", w - 21))
+	term.setCursorPos(24, 6)
+	term.write("[<-]")
+	if f == "inbox" or f == "trash" then
+		term.setCursorPos(w - 12, 6)
+		term.write("[Options]")
+	end
+	term.setTextColor(colors.white)
+
+	local function drawlines(lines, loc)
+		term.setTextColor(colors.black)
+		local l = 1
+		for i = 7, h - 2 do
+			term.setCursorPos(21, i)
+			term.write(string.rep(" ", w - 21))
+			term.setCursorPos(22, i)
+			if lines[l   loc - 1] then term.write(lines[l   loc - 1]:sub(1, w - 23)) end
+			l = l   1
+		end
+
+		if #lines > h - 2 then
+			local a = math.max(0, math.floor((loc / (#lines - 10)) * 10))
+			term.setCursorPos(w - 2, a   7)
+			term.setTextColor(colors.lightGray)
+			term.write("o")
+		end
+
+		term.setTextColor(colors.white)
+	end
+
+	local loc = 1
+	drawlines(content, loc)
+	while true do
+		local e, but, x, y = os.pullEvent()
+		if e == "key" and but == 200 and loc > 1 then
+			loc = loc - 1
+			drawlines(content, loc)
+		elseif e== "key" and but == 208 and loc   10 < #content then
+			loc = loc   1
+			drawlines(content, loc)
+		elseif e == "mouse_click" then
+			if y == 1 then
+				local a = triggermenu(x, y)
+				if a then
+					term.setBackgroundColor(colors.gray)
+					for i = 3, h - 1 do
+						term.setCursorPos(21, i)
+						term.write(string.rep(" ", w - 21))
+					end
+					return "menu", a:lower()
+				end
+			elseif y == 6 and x >= 24 and x <= 27 then
+				term.setBackgroundColor(colors.gray)
+				for i = 3, h - 1 do
+					term.setCursorPos(21, i)
+					term.write(string.rep(" ", w - 21))
+				end
+				return
+			elseif f == "inbox" and y == 6 and x >= w - 12 and x <= w - 4 then
+				term.setBackgroundColor(colors.white)
+				term.setTextColor(colors.lightGray)
+				term.setCursorPos(w - 12, 7)
+				term.write(" [Trash]   ")
+				term.setCursorPos(w - 12, 8)
+				term.write(" [Reply]   ")
+				term.setCursorPos(w - 12, 9)
+				term.write(" [Forward] ")
+				term.setCursorPos(w - 12, 10)
+				term.write("           ")
+
+				while true do
+					local e, but, cx, cy = os.pullEvent()
+					if e == "mouse_click" then
+						if cy == 7 and cx >= w - 11 and cx <= w - 5 then
+							-- Trash
+							local a = trash(username, password, mes.msgid)
+							if a ~= "true" then
+								term.setCursorPos(22, h - 1)
+								term.setBackgroundColor(colors.white)
+								term.setTextColor(colors.lightGray)
+								if a == "false" then term.write("Trash Failed!")
+								else term.write(a) end
+								sleep(1.6)
+							end
+							return "reload"
+						elseif cy == 8 and cx >= w - 11 and cx <= w - 5 then
+							-- Reply
+							compose({to = mes.from, subject = "Re:" .. mes.subject})
+							return "reload"
+						elseif cy == 9 and cx >= w - 11 and cx <= w - 3 then
+							-- Forward
+							compose({subject = "Fwd:" .. mes.subject})
+							return "reload"
+						else break end
+					end
+				end
+				drawlines(content, loc)
+			elseif f == "trash" and y == 6 and x >= w - 12 and x <= w - 4 then
+				term.setBackgroundColor(colors.white)
+				term.setTextColor(colors.lightGray)
+				term.setCursorPos(w - 12, 7)
+				term.write(" [Delete]  ")
+				term.setCursorPos(w - 12, 8)
+				term.write("           ")
+
+				while true do
+					local e, but, cx, cy = os.pullEvent()
+					if e == "mouse_click" then
+						if cy == 7 and cx >= w - 11 and cx <= w - 4 then
+							-- Delete
+							local a = delete(username, password, mes.msgid)
+							if a ~= "true" then
+								term.setCursorPos(22, h - 1)
+								term.setBackgroundColor(colors.white)
+								term.setTextColor(colors.lightGray)
+								if a == "false" then term.write("Deletion Failed!")
+								else term.write(a) end
+								sleep(1.6)
+							end
+							return "reload"
+						else break end
+					end
+				end
+				drawlines(content, loc)
+			end
+		elseif e == "mouse_scroll" and x >= 21 and y >= 5 then
+			local a = 200
+			if but == 1 then a = 208 end
+			os.queueEvent("key", a)
+		end
+	end
+end
+
+
+--  -------- Inbox
+
+local function folder(f)
+	local wid, sx = 18, 5
+	term.setCursorBlink(false)
+	term.setBackgroundColor(colors.gray)
+	term.setTextColor(colors.white)
+	term.clear()
+	drawmenu()
+
+	local messages = {}
+
+	if f == "inbox" then messages = getinbox(username, password)
+	elseif f == "sent" then messages = getsent(username, password)
+	elseif f == "trash" then messages = gettrash(username, password) end
+
+	term.setBackgroundColor(colors.gray)
+	if f == "trash" then
+		term.setCursorPos(2, 3)
+		term.write("Trash")
+		term.setCursorPos(wid - 7, 3)
+		term.write("[Empty]")
+	else
+		term.setCursorPos(wid/2 - f:len()/2, 3)
+		term.write(f:sub(1, 1):upper() .. f:sub(2, -1))
+	end
+
+	if type(messages) == "string" then
+		term.setBackgroundColor(colors.lightBlue)
+		for i = 5, 8 do
+			term.setCursorPos(1, i)
+			term.write(string.rep(" ", 28))
+		end
+		term.setCursorPos(2, 6)
+		term.write("Error: Could not get mail!")
+		term.setCursorPos(2, 7)
+		term.write(messages)
+
+		for i = 10, 12 do
+			term.setCursorPos(1, i)
+			term.write(string.rep(" ", 28))
+		end
+		term.setCursorPos(2, 11)
+		term.write("Click to refresh...")
+
+		while true do
+			local e, but, cx, cy = os.pullEvent()
+			if (e == "mouse_click" and cy > 1) or e == "key" then
+				break
+			elseif e == "mouse_click" and cy == 1 then
+				local a = triggermenu(cx, cy)
+				if a then return a:lower() end
+			end
+		end
+		return f
+	end
+
+	local sel, loc = 1, 1
+	local dis = updateDisplayList(messages, loc, 3)
+
+	local function drawmessages(dis)
+		if #dis > 0 then
+			for i, v in ipairs(dis) do
+				if i == sel then term.setBackgroundColor(colors.lightBlue)
+				else term.setBackgroundColor(colors.cyan) end
+				for x = sx, sx   3 do
+					term.setCursorPos(1, (i - 1) * 5   x)
+					term.write(string.rep(" ", wid))
+				end
+
+				term.setCursorPos(2, (i - 1) * 5   sx   1)
+				if i == sel then term.write(format(v.subject, 17))
+				else term.write(format(v.subject, 17)) end
+				term.setCursorPos(2, (i - 1) * 5   sx   2)
+				term.write(format(v.from, 18))
+			end
+		else
+			term.setBackgroundColor(colors.lightBlue)
+			for i = sx, sx   2 do
+				term.setCursorPos(1, i)
+				term.write(string.rep(" ", wid))
+			end
+			term.setCursorPos(2, sx   1)
+			term.write("No Messages!")
+		end
+	end
+
+	drawmessages(dis)
+	term.setBackgroundColor(colors.gray)
+	term.setCursorPos(wid   (w - wid)/2 - 7, 10)
+	term.write("No Message Selected")
+
+	while true do
+		local e, but, x, y = os.pullEvent()
+		if e == "key" then
+			if but == 200 then
+				if sel > 1 then
+					sel = sel - 1
+					drawmessages(dis)
+				elseif loc > 1 then
+					loc = loc - 1
+					dis = updateDisplayList(messages, loc, 3)
+					drawmessages(dis)
+				end
+			elseif but == 208 then
+				if sel < #dis then
+					sel = sel   1
+					drawmessages(dis)
+				elseif loc   3 - 1 < #messages then
+					loc = loc   1
+					dis = updateDisplayList(messages, loc, 3)
+					drawmessages(dis)
+				end
+			elseif but == 28 and #dis > 0 then
+				local a, b = view(dis[sel], f)
+				if a == "menu" then return b
+				elseif a == "reload" then return f end
+				term.setBackgroundColor(colors.gray)
+				term.setCursorPos(wid   (w - wid)/2 - 7, 10)
+				term.write("No Message Selected")
+			end
+		elseif e == "mouse_click" then
+			if y == 1 then
+				local a = triggermenu(x, y)
+				if a then return a:lower() end
+			elseif y == 3 and x >= wid - 7 and x <= wid - 1 then
+				-- Empty
+				local a = emptytrash(username, password)
+				if a ~= "true" then
+					term.setBackgroundColor(colors.gray)
+					term.setCursorPos(2, 4)
+					if a == "false" then term.write("Deletion Failed!")
+					else term.write(a) end
+					sleep(1.6)
+				end
+				return f
+			elseif #dis > 0 then
+				for i, v in ipairs(dis) do
+					if y >= (i - 1) * 5   sx and y <= (i - 1) * 5   sx   3 and x >= 1 and x <= wid then
+						sel = i
+						drawmessages(dis)
+						local a, b = view(v, f)
+						if a == "menu" then return b
+						elseif a == "reload" then return f end
+						term.setBackgroundColor(colors.gray)
+						term.setCursorPos(wid   (w - wid)/2 - 7, 10)
+						term.write("No Message Selected")
+					end
+				end
+			end
+		elseif e == "mouse_scroll" and #messages > 1 and x >= 1 and x <= wid   1 then
+			local a = 200
+			if but == 1 then a = 208 end
+			os.queueEvent("key", a)
+		end
+	end
+
+	return "inbox"
+end
+
+local function inbox()
+	local opt = "inbox"
+	while true do
+		if opt == "inbox" or opt == "sent" or opt == "trash" then opt = folder(opt) end
+		if opt == "exit" then return "exit"
+		elseif opt == "logout" then return "menu"
+		elseif opt == "new" then opt = compose()
+		elseif opt == "account" then opt = account() if opt == "menu" then return "menu" end end
+	end
+end
+
+
+--  -------- Menu
+
+local function login()
+	title("Thunderhawk " .. version .. " - Login")
+
+	term.setBackgroundColor(colors.cyan)
+	for i = 8, 11 do term.setCursorPos(5, i) term.write(string.rep(" ", 36)) end
+	term.setCursorPos(6, 9)
+	term.write("Username: ")
+	term.setCursorPos(6, 10)
+	term.write("Password: ")
+	drawButton({"Cancel", 8, 15, bg = colors.pink, highlight = colors.red}, true)
+	term.setBackgroundColor(colors.cyan)
+
+	local cancelled = false
+	local function update(line, e, but, x, y)
+		if e == "mouse_click" and x >= 8 and x <= 23 and y >= 14 and y <= 16 then
+			cancelled = true
+			return true
+		end
+	end
+
+	term.setCursorPos(16, 9)
+	local user = modRead({textLength = 40, visibleLength = 38, liveUpdates = update})
+	if user == "" or cancelled then return "menu" end
+
+	term.setCursorPos(16, 10)
+	local pass = modRead({replaceChar = "*", textLength = 40, visibleLength = 38, liveUpdates = update})
+	if pass == "" or cancelled then return "menu" end
+	pass = sha256(pass)
+
+	local stat = verify(user, pass)
+	if stat == "true" then
+		drawButton({"Success", 20, 15})
+		sleep(1.6)
+		return "inbox", user, pass
+	elseif stat == "false" then drawButton({"Invalid Credentials", 20, 15})
+	else drawButton({stat, 20, 15}) end
+	sleep(1.6)
+
+	return "menu"
+end
+
+local function register()
+	title("Thunderhawk " .. version .. " - Register")
+
+	term.setBackgroundColor(colors.gray)
+	term.setCursorPos(3, 6)
+	term.write("To register, please visit the Thunderhawk")
+	term.setCursorPos(3, 7)
+	term.write("website at:")
+	term.setCursorPos(3, 9)
+	term.write("http://firewolfcc.com/thunderhawk")
+	term.setCursorPos(3, 11)
+	term.write("Press any key to return.")
+	os.pullEvent("key")
+	os.queueEvent("thunderhawk_dummyEvent")
+	os.pullEvent()
+
+	return "menu"
+end
+
+local function menu()
+	title("Thunderhawk " .. version)
+	local opt = prompt({{"Login", w/2 - 10, 9}, {"Register", w/2   2, 9},
+		{"Exit Thunderhawk", w/2 - 8, 14, bg = colors.pink, highlight = colors.red}},
+		"horizontal"):lower()
+	if opt == "exit thunderhawk" then opt = "exit" end
+	return opt
+end
+
+
+--  -------- Main
+
+local function updateclient()
+	local updateLocation = "/.thunderhawk-update"
+	fs.delete(updateLocation)
+
+	download(thunderhawkURL, updateLocation)
+	local a, b = io.open(updateLocation, "r"), io.open(thunderhawkLocation, "r")
+	local new, cur = a:read("*a"), b:read("*a")
+	a:close()
+	b:close()
+
+	if cur ~= new then
+		fs.delete(thunderhawkLocation)
+		fs.move(updateLocation, thunderhawkLocation)
+		shell.run(thunderhawkLocation)
+		return true
+	else
+		fs.delete(updateLocation)
+		return false
+	end
+end
+
+local function main()
+	-- Logo
+	title("Welcome to Thunderhawk " .. version)
+
+	term.setCursorPos(1, 7)
+	term.setBackgroundColor(colors.lightBlue)
+	centerPrint(string.rep(" ", 34))
+	centerPrint([[               .-"-.              ]])
+	centerPrint([[   __________ /  ,~a\_ ________   ]])
+	centerPrint([[  |\          \  \__))>       /|  ]])
+	centerPrint([[  |  \        ,) ." \       /  |  ]])
+	centerPrint([[  |    \     /  (    \    /    |  ]])
+	centerPrint([[  |      \_ /   )    ; _/      |  ]])
+	centerPrint([[  |        /   /     /         |  ]])
+	centerPrint([[  |      ,/_."' __.-'          |  ]])
+	centerPrint([[  |_____ /_/'"\\___ ___________|  ]])
+	centerPrint([[               '~~~'              ]])
+	centerPrint(string.rep(" ", 34))
+	if autoupdate then if updateclient() then error() end end
+
+	-- Main run loop
+	local opt = "menu"
+	while true do
+		if opt == "menu" then opt = menu()
+		elseif opt == "login" then opt, username, password = login()
+		elseif opt == "register" then opt, username, password = register()
+		elseif opt == "inbox" and username and password then opt = inbox()
+		elseif opt == "exit" then return end
+	end
+end
+
+-- Advanced computer
+if not isAdvanced() then
+	print("Thunderhawk " .. version .. " requires an advanced computer!")
+	error()
+end
+
+-- Read only
+if fs.isReadOnly(thunderhawkLocation) then
+	print("Thunderhawk is located in a read only location!")
+	print("This could be caused by Thunderhawk being placed")
+	print("in the rom, or by another program modifying the")
+	print("fs API")
+	error()
+end
+
+-- Run
+local _, err = pcall(function() main() end)
+
+-- Show error
+if err and not err:find("Terminated") then
+	term.setCursorBlink(false)
+	title("Thunderhawk " .. version .. " - Crash")
+
+	term.setBackgroundColor(colors.cyan)
+	for i = 7, 9 do term.setCursorPos(5, i) term.write(string.rep(" ", 36)) end
+	term.setCursorPos(6, 8)
+	term.write("Thunderhawk Has Crashed!")
+	term.setBackgroundColor(colors.gray)
+	term.setCursorPos(2, 11)
+	print(err)
+
+	local x, y = term.getCursorPos()
+	y = y   1
+	term.setBackgroundColor(colors.cyan)
+	for i = y, y   3 do term.setCursorPos(5, i) term.write(string.rep(" ", 36)) end
+	term.setCursorPos(6, y   1)
+	term.write("Please report this error to")
+	term.setCursorPos(6, y   2)
+	term.write("GravityScore! Click to exit.")
+	
+	while true do
+		local e = os.pullEvent()
+		if e == "mouse_click" or e == "key" then break end
+	end
+end
+
+-- Exit
+term.setTextColor(colors.white)
+term.setBackgroundColor(colors.black)
+term.clear()
+term.setCursorPos(1, 1)
+centerPrint("Thanks For Using Thunderhawk " .. version)
+centerPrint("Made by GravityScore")

@@ -1,0 +1,3 @@
+rednet.open("right")
+rednet.broadcast("start")
+rednet.close("right")

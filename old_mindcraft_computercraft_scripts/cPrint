@@ -1,0 +1,17 @@
+local args = {...}
+
+if #args < 2 then
+  print("Usage: cPrint <text> <color> (bgcolor)")
+return  
+end
+
+args2 = args[2]
+args3 = args[3]
+textcolor = colors[args2]
+background = colors[args3]
+
+term.setTextColor(textcolor)
+term.setBackgroundColor(background or colors.black)
+term.write(args[1])
+term.setTextColor(colors.white)
+term.setBackgroundColor(colors.black)

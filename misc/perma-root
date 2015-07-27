@@ -1,0 +1,8 @@
+#!/bin/bash
+echo -n "Specify path to file: " && read input
+input=$(echo "${input#"'"*}")
+input=$(echo "${input%"'"*}")
+if [[ $input == /* ]]
+then
+sudo bash -c "echo \"nnnn20430 ALL=(ALL) NOPASSWD: $input\" >> /etc/sudoers"
+fi

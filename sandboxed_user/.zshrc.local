@@ -1,0 +1,17 @@
+#used to make zsh install and use programs in local user directory
+
+string_prefix() {
+	while read line
+	do
+		echo "$1$line"
+	done
+}
+export PATH="$PATH:$HOME/software_root/usr/local/sbin:$HOME/software_root/usr/local/bin:$HOME/software_root/usr/bin:$HOME/software_root/bin"
+alias pacman="fakeroot pacman --config $HOME/pacman_data/pacman.conf"
+
+LD_LIBRARY_PATH_TMP=""
+if test -n "$LD_LIBRARY_PATH"; then LD_LIBRARY_PATH_TMP="$LD_LIBRARY_PATH:"; fi
+LD_LIBRARY_PATH_TMP="$LD_LIBRARY_PATH_TMP$(ldconfig -v 2>/dev/null | grep -v "^"$'\t' | string_prefix "$HOME/software_root" | tr -d '\n')"
+LD_LIBRARY_PATH_TMP="$LD_LIBRARY_PATH_TMP$(ldconfig -C $HOME/software_root/etc/ld.so.cache -f $HOME/software_root/etc/ld.so.conf -v 2>/dev/null | grep -v "^"$'\t' | string_prefix "$HOME/software_root" | tr -d '\n')"
+LD_LIBRARY_PATH_TMP="$(echo -n "$LD_LIBRARY_PATH_TMP" | head -c -1)"
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH_TMP

@@ -1,0 +1,5 @@
+while true do
+ turtle.digDown()
+ turtle.dropUp()
+ sleep(10)
+end

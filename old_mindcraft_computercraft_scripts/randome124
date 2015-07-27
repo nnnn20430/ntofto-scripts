@@ -1,0 +1,20 @@
+local function getDeviceSide(deviceType)
+  local lstSides = {"left","right","up","down","front","back"};
+  for i, side in pairs(lstSides) do
+    if (peripheral.isPresent(side)) then
+      if (peripheral.getType(side) == deviceType) then
+        return side;
+      end
+    end
+  end -- for-do
+  return nil;
+end
+
+while true do
+sleep(1)
+if redstone.getInput("right") ~=false then
+ sleep(1)
+ drive=peripheral.wrap("top")
+ drive.move(5,false,false)
+end
+end

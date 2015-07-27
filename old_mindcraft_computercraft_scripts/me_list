@@ -1,0 +1,13 @@
+ME = peripheral.wrap("right")
+local n = ME.listItems()
+print("format:")
+print("id:amount")
+print("press any key to continue to next item")
+print("press 'e' to exit")
+for id,amount in pairs(n) do print(id, ":", amount)
+event,keypr = os.pullEvent("char")
+if keypr == "q" then
+return
+else
+end
+end

@@ -1,0 +1,343 @@
+--[[
+		Monitor and terminal Display controll system.
+		by BigShinyToys
+]]--
+
+local ver = "0.3"
+
+local function connect(tMonitor)
+
+	local termX,termY = term.getSize()
+	local tFunctions = {"write","scroll","setCursorPos","setCursorBlink",
+	"clear","clearLine","setTextColour","setTextColor", -- setTextScale
+	"setBackgroundColour","setBackgroundColor",}
+	local tNonreturn = {"getCursorPos","getSize","isColour","isColor",}
+	local tPassed = {}
+	tPassed.direct = {}
+	tPassed.wire = {}
+	-- evluate candidats
+	for _,device in pairs(tMonitor) do
+		if device.scale == "best" then
+			for size = 1.5,0.5,-0.5 do
+				local monX,monY
+				if device.type == "direct" then
+					peripheral.call(device.side,"setTextScale",size)
+					monX,monY = peripheral.call(device.side,"getSize")
+				elseif device.type == "wire" then
+					peripheral.call(device.modemSide,"callRemote",device.deviceID,"setTextScale",size)
+					monX,monY = peripheral.call(device.modemSide,"callRemote",device.deviceID,"getSize")
+				end
+				if monX >= termX and monY >= termY then
+					table.insert(tPassed[device.type],device)
+					break
+				end
+			end
+		else
+			if device.type == "direct" then
+				peripheral.call(device.side,"setTextScale",device.scale)
+			elseif device.type == "wire" then
+				peripheral.call(device.modemSide,"callRemote",device.deviceID,"setTextScale",device.scale)
+			end
+			table.insert(tPassed[device.type],device)
+		end
+	end
+	
+	local tOut = {}
+	
+	--print("Running pack process")
+	local listA = {}
+	for k,v in pairs(tPassed.direct) do
+		table.insert(listA,v.side)
+	end
+	for k,v in pairs(tPassed.wire) do
+		table.insert(listA,v.deviceID)
+	end
+		
+	for _,item in pairs(tFunctions) do
+		local tempFunction =  function()
+			local list = listA
+			local item = item
+			return function(...)
+				for i = 1,#list do
+					peripheral.call(list[i],item,...)
+				end
+				return term.native[item](...)
+			end
+		end
+		tOut[item] = tempFunction()
+	end
+	for _,item in pairs(tNonreturn) do
+		local tempFunction =  function()
+			local item = item
+			return function(...)
+				return term.native[item](...)
+			end
+		end
+		tOut[item] = tempFunction()
+	end
+	
+	return tOut
+	
+end
+
+
+--[[
+				for k,v in pairs(tPassed.direct) do
+					peripheral.call(v.side,item,...)
+				end
+				for k,v in pairs(tPassed.wire) do
+					peripheral.call(v.modemSide,"callRemote",v.deviceID,item,...)
+				end
+				return term.native[item](...)
+]]--
+			
+--[[
+local tArg = {...}
+
+if tArg[1] then
+	term.clear()
+	term.setCursorPos(1,1)
+	term.restore()
+else
+	local newTerm = connect(grabScreens())
+	term.redirect(newTerm)
+	term.clear()
+	term.setCursorPos(1,1)
+	--term.write("test")
+	--os.pullEvent()
+end
+]]--
+
+
+
+local function test(...)
+	term.setCursorPos(1,1)
+	print(...)
+	local event,number = os.pullEvent()
+	if event == "key" and number == 14 then
+		error()
+	end
+end
+
+--[[
+		{"type","player","other","y/n","number",},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+		{"random type","Offline","I dont know what",true,7},
+]]--
+
+local testGrid = {
+	posX = 2,
+	posY = 2,
+	width = 50,
+	hight = 16,
+	selOffX = 0,
+	selOffY = 0,
+	colWidth = {8,11,9,7,7,7},
+	data = {}
+}
+
+local function getperpheralData()
+	local tree = {}
+	local data = {}
+	
+	table.insert(data,{"Side","Name","Type","Active","con","scale"})
+	
+	print("Welcome to netSearch")
+	for k,v in pairs(rs.getSides()) do
+		if peripheral.getType(v) == "modem" then
+			local tList = peripheral.getMethods(v)
+			hasWire = false
+			for i = 1,#tList do
+				if tList[i] == "isWireless" then
+					if not peripheral.call(v,"isWireless") then
+						tree[v] = {["type"] = "side",["status"] = "closed",["sub"] = {},}
+					end
+					hasWire = true
+					break
+				end
+			end
+			if not hasWire then
+				error("Requires a Computer Craft ver 1.51 or above and Peripheral cables")
+			end
+		elseif peripheral.getType(v) == "monitor" then
+			table.insert(data,{v,v,"monitor",false,"direct","best"})
+		end
+	end
+	print("Found "..#tree.." wired access points.")
+
+	for k,v in pairs(tree) do
+		print(type(k),k," ",type(v))
+		local devices = peripheral.call(k,"getNamesRemote")
+		for a,b in pairs(devices) do
+			print(type(a),tostring(a)," ",type(b),tostring(b))
+			tree[k].sub[b] = peripheral.call(k,"getTypeRemote",b)
+		end
+	end
+
+	term.clear()
+	term.setCursorPos(1,1)
+	
+	for k,v in pairs(tree) do
+		
+		print("--- Side "..k.."---")
+		for j,l in pairs(v.sub) do
+			if l == "monitor" then
+				table.insert(data,{k,j,l,false,"wire","best"})
+			end
+		end
+		
+	end
+	
+	return data
+end
+
+local titleTX = term.isColor() and colors.white or colors.black
+local titleBC = term.isColor() and colors.gray or colors.white
+
+local function drawGrid(grid)
+	local sBlank = ""
+	for k,v in pairs(grid.colWidth) do
+		sBlank = sBlank..string.rep(" ",v-1).."|"
+	end
+	for i = grid.posY,grid.hight+grid.posY do
+		term.setCursorPos(grid.posX,i)
+		local sel = i - grid.posY + 1 + grid.selOffY
+		if grid.data[sel] then
+			if sel == 1 then
+				term.setTextColor(titleTX)
+				term.setBackgroundColor(titleBC)
+			else
+				term.setTextColor(colors.white)
+				term.setBackgroundColor(colors.black)
+			end
+			for k,v in pairs(grid.data[sel]) do
+				term.write(string.sub(tostring(v)..string.rep(" ",grid.colWidth[k] - 1),1,grid.colWidth[k] - 1).."|")
+			end
+		else
+			term.write(sBlank)
+		end
+	end
+end
+
+local function manipulateGrid(grid)
+	local lastEvent = nil
+	local lastBlock = nil
+	local list = {}
+	local function applyScreen()
+		term.clear()
+		term.setCursorPos(1,1)
+		term.restore()
+		term.redirect(connect(list))
+	end
+	local function reList()
+		list = {}
+		for no,value in pairs(grid.data) do
+			if no ~= 1 and value[4] then
+				table.insert(list,{["type"] = value[5],["side"] = value[1],["modemSide"] = value[1],["deviceID"] = value[2],["scale"] = value[6]})
+			end
+		end
+	end
+	applyScreen()
+	while true do
+		term.clear()
+		drawGrid(grid)
+		local event = {os.pullEvent()}
+		if event[1] == "mouse_click" then
+			--if event[2] == 1 then -- left button
+				local row = event[4] - grid.posY + grid.selOffY + 1
+				
+				local total = grid.posX - 1
+				lastBlock = nil
+				for i = 1,#grid.colWidth do
+					if event[3] > total and event[3] <= total + grid.colWidth[i] then
+						lastBlock = i
+						break
+					end
+					total = total + grid.colWidth[i]
+				end
+				
+				if event[4] == grid.posY - grid.selOffY then -- X line
+					
+				elseif grid.data[row] then
+					if lastBlock == 4 then
+						grid.data[row][4] = not grid.data[row][4]
+						reList()
+					elseif lastBlock == 6 then
+						if event[2]== 1 then
+							if grid.data[row][6] == "best" then
+								grid.data[row][6] = 0.5
+							else
+								grid.data[row][6] = grid.data[row][6] + 0.5
+							end
+							if grid.data[row][6] > 5 then
+								grid.data[row][6] = "best"
+							end
+						elseif event[2] == 2 then
+							if grid.data[row][6] == "best" then
+								grid.data[row][6] = 5
+							else
+								grid.data[row][6] = grid.data[row][6] - 0.5
+							end
+							if grid.data[row][6] < 0.5 then
+								grid.data[row][6] = "best"
+							end
+						end
+						reList()
+					end
+					applyScreen()
+				end
+			--end
+		elseif event[1] == "mouse_drag" then
+			if event[2] == 1 then -- left button
+				if event[4] == grid.posY - grid.selOffY and lastBlock then -- X line
+					local nTest = event[3] - lastEvent[3]
+					if nTest == 1 or nTest == -1 then
+						grid.colWidth[lastBlock] = grid.colWidth[lastBlock] + nTest
+					else
+						lastBlock = nil
+					end
+					if lastBlock and grid.colWidth[lastBlock] < 1 then
+						grid.colWidth[lastBlock] = 1
+						lastBlock = nil
+					end
+				else
+					lastBlock = nil
+				end
+			end
+		elseif event[1] == "mouse_scroll" then
+			grid.selOffY = grid.selOffY + event[2]
+		elseif event[1] == "key" then
+			if event[2] == 14 then
+				return
+			elseif event[2] == 200 then -- up
+				grid.posY = grid.posY - 1
+			elseif event[2] == 208 then -- down
+				grid.posY = grid.posY + 1
+			elseif event[2] == 203 then -- left
+				grid.posX = grid.posX - 1
+			elseif event[2] == 205 then -- right
+				grid.posX = grid.posX + 1
+			elseif event[2] == 28 then -- enter
+				applyScreen()
+				return
+			end
+		elseif event[1] == "peripheral" or event[1] == "peripheral_detach" then
+			grid.data = getperpheralData()
+			reList()
+			applyScreen()
+		end
+		lastEvent = event
+	end
+end
+
+testGrid.data = getperpheralData()
+
+manipulateGrid(testGrid)
+term.setCursorPos(1,1)

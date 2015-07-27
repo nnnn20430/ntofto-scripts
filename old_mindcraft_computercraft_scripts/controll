@@ -1,0 +1,29 @@
+local Args = {...}
+
+if #Args ~= 1 then
+  print("Usage: controll <start/stop>")
+return  
+end
+
+local function start()
+ rednet.open("right")
+ rednet.broadcast("start")
+ rednet.close("right")
+end
+
+local function stop()
+ rednet.open("right")
+ print("Broadcasting")
+ print("Press 'q' to stop")
+ while true do
+ rednet.broadcast("stop")
+ os.startTimer(1)
+ local event,key = os.pullEvent()
+ if key == "q" then break else
+ end
+ end
+rednet.close("right")
+end
+
+if Args[1] == "start" then start() end
+if Args[1] == "stop" then stop() end

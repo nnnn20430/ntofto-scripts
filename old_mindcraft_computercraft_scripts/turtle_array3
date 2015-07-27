@@ -1,0 +1,40 @@
+turtle.select(1)
+turtle.dig()
+local function Begin2()
+ while true do
+  turtle.select(1)
+  local full = turtle.getItemCount(15)
+  if full ~= 0 then
+   while true do
+    if turtle.detect() then
+     turtle.select(1)
+     turtle.dig()
+     else
+     break
+    end
+   end
+   turtle.select(1)
+   while true do
+    slot=slot+1
+    turtle.place()
+    turtle.select(slot)
+    turtle.drop()
+    if slot == 16 then
+     slot=1
+     break
+    end
+   end
+   turtle.select(1)
+   turtle.dig()
+   else
+   turtle.select(1)
+   turtle.forward()
+   turtle.dig()
+  end
+ end
+end
+
+while true do
+ slot=1
+ Begin2()
+end

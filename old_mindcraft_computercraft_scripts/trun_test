@@ -1,0 +1,113 @@
+args = {...}
+local valid = false
+local timeinseconds = nil
+local programfilename = nil
+
+if #args == 3 or #args >= 4 then else
+ print("Usage: "..shell.getRunningProgram().." small (seconds) (program)")
+ print("Or: "..shell.getRunningProgram().." full (hours) (minutes) (seconds) (program)")
+ return
+end
+
+function pack123(t, k)
+ k = k or 1
+ if t[k] ~= nil then
+  return t[k], pack123(t, k + 1)
+ end
+end
+
+if args[1] == "full" then
+ valid = true
+ if tonumber(args[2]) == nil then
+  print("Error: Not valid number")
+  return
+ end
+ if tonumber(args[3]) == nil then
+  print("Error: Not valid number")
+  return
+ end
+ if tonumber(args[4]) == nil then
+  print("Error: Not valid number")
+  return
+ end
+ timeinmin = args[2] * 60
+ timeinmin = timeinmin + args[3]
+ timeinseconds = timeinmin * 60
+ timeinseconds = timeinseconds + args[4]
+ programfilename = {pack123(args, 5)}
+end
+
+if args[1] == "small" then
+ valid = true
+ if tonumber(args[2]) == nil then
+  print("Error: Not valid number")
+  return
+ end
+ timeinseconds = tonumber(args[2])
+ programfilename = {pack123(args, 3)}
+end
+
+if not valid then
+ print("Error: Not valid argument")
+ return
+end
+
+term.clear()
+term.setCursorPos(1,1)
+
+function showtime()
+ time_h = 0
+ time_m = 0
+ time_c = 0
+ time_r = timeinseconds
+ while true do
+  if time_c == 60 then
+   time_m = time_m + 1
+   time_c = 0
+  end
+  if time_m == 60 then
+   time_h = time_h + 1
+   time_m = 0
+  end
+  if time_r >= 1 then
+   time_c = time_c + 1
+   time_r = time_r - 1
+  else
+   break
+  end
+ end
+
+ if time_h > 9 then
+  time_h_0 = ""
+ else
+  time_h_0 = "0"
+ end
+ 
+ if time_m > 9 then
+  time_m_0 = ""
+ else
+  time_m_0 = "0"
+ end
+ 
+ if time_c > 9 then
+  time_c_0 = ""
+ else
+  time_c_0 = "0"
+ end
+
+ term.clear()
+ term.setCursorPos(1,1)
+
+ print("Time Remaining: "..time_h_0..time_h..":"..time_m_0..time_m..":"..time_c_0..time_c)
+end
+
+
+while true do
+ showtime()
+ sleep(1)
+ timeinseconds = timeinseconds - 1
+ if timeinseconds <= -1 then
+  shell.run(unpack(programfilename))
+  break
+ end
+end

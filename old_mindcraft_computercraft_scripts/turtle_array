@@ -1,0 +1,59 @@
+turtle.select(1)
+local function Begin()
+ rednet.open("right")
+ local id, message, distance = rednet.receive()
+ if message ~= "start" then
+ Begin()
+ end
+ 
+ while true do
+ turtle.select(1)
+ local full = turtle.getItemCount(15)
+ if full ~= 0 then
+ turtle.select(1)
+ turtle.dig()
+ turtle.place()
+ turtle.select(2)
+ turtle.drop()
+ turtle.select(3)
+ turtle.drop()
+ turtle.select(4)
+ turtle.drop()
+ turtle.select(5)
+ turtle.drop()
+ turtle.select(6)
+ turtle.drop()
+ turtle.select(7)
+ turtle.drop()
+ turtle.select(8)
+ turtle.drop()
+ turtle.select(9)
+ turtle.drop()
+ turtle.select(10)
+ turtle.drop()
+ turtle.select(11)
+ turtle.drop()
+ turtle.select(12)
+ turtle.drop()
+ turtle.select(13)
+ turtle.drop()
+ turtle.select(14)
+ turtle.drop()
+ turtle.select(15)
+ turtle.drop()
+ turtle.select(16)
+ turtle.drop()
+ turtle.select(1)
+ turtle.dig()
+ else
+ turtle.dig()
+ turtle.forward()
+ end
+ local id, message, distance = rednet.receive(1)
+ if message == "stop" then break else
+ end
+ end
+ rednet.close("right")
+ Begin()
+end
+Begin()

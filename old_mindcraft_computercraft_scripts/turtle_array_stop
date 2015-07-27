@@ -1,0 +1,11 @@
+rednet.open("right")
+print("Broadcasting")
+print("Press 'q' to stop")
+while true do
+rednet.broadcast("stop")
+os.startTimer(1)
+local event,key = os.pullEvent()
+if key == "q" then break else
+end
+end
+rednet.close("right")

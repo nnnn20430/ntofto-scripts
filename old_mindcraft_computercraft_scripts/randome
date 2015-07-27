@@ -1,0 +1,9 @@
+while true do
+n = redstone.getInput("right")
+print(n)
+if n == "true" then
+print("yes")
+turtle.dig()
+end
+sleep(0.3)
+end

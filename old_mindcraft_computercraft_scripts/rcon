@@ -1,0 +1,73 @@
+server = "http://localhost/webturtle/rcon/mcRcon.php"
+rcon_pass = "AweSome_PaSs_2o14_fOrever!"
+rcon_server = "localhost"
+rcon_port = 25575
+valid = false
+
+local function printUsage()
+    print( "Usages:" )
+    print( "rcon default <command>" )
+    print( "rcon custom <server> <port> <rcon_pass> <command>" )
+end
+
+local tArgs = { ... }
+if #tArgs < 2 then
+    printUsage()
+    return
+end
+ 
+
+function movetable(t, k)
+ k = k or 1
+ if t[k] ~= nil then
+  return t[k], movetable(t, k + 1)
+ end
+end
+
+function combine(t)
+ k = 1
+ var = ""
+ while true do
+  if t[k] ~= nil then
+   var = var.." "..t[k]
+   k = k + 1
+  else
+   break
+  end
+ end
+return var
+end
+
+if tArgs[1] == "default" then
+ valid = true
+ command = {movetable(tArgs, 2)}
+ command = combine(command)
+end
+
+if tArgs[1] == "custom" then
+ valid = true
+ rcon_server = tArgs[2]
+ rcon_port = tonumber(tArgs[3])
+ rcon_pass = tArgs[4]
+ command = {movetable(tArgs, 5)}
+ command = combine(command)
+end
+
+if not valid then
+ print("Error: Invalid arguments")
+ return
+end
+
+local response = http.post(
+    ""..server,
+    "command="..textutils.urlEncode(tostring(command)).."&"..
+    "rcon_server="..textutils.urlEncode(tostring(rcon_server)).."&"..
+    "rconPass="..textutils.urlEncode(tostring(rcon_pass)).."&"..
+    "rconPort="..textutils.urlEncode(tostring(rcon_port))
+)
+
+if response then
+    print( "Success." )
+else
+    print( "Failed." )
+end

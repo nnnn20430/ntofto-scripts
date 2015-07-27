@@ -1,0 +1,115 @@
+function pastebinGet(code,directory)
+	local response = http.get("http://pastebin.com/raw.php?i="..textutils.urlEncode(code))
+	
+	if response then
+		local responseText = response.readAll()
+		response.close()
+		newFile = fs.open(directory,"w")
+		newFile.write(responseText)
+		newFile.close()
+	end
+end
+
+--[[ Main ]]--
+term.clear()
+term.setCursorPos(1,1)
+print("	Installing Jupiter.")
+
+--Check to make sure all requirements are met.
+print("Checking System.")
+if not term.isColor() then
+	print("Error: This is not an Advanced Computer.")
+	return
+end
+if not http then
+	print("Error: HTTP is no enabled.")
+	return
+end
+if fs.exists("jupiterOS") then
+	print("Error: You already have a folder called 'jupiterOS'.")
+	return
+end
+
+print("Making Directories.")
+fs.makeDir("jupiterOS")
+fs.makeDir("jupiterOS/files")
+fs.makeDir("jupiterOS/files/icons")
+
+print("Getting Files.")
+print("jupiterOS/files/version")
+pastebinGet("qpG2gVdp","jupiterOS/files/version")
+print("jupiterOS/jupiter")
+pastebinGet("RzbEiz71","jupiterOS/jupiter")
+print("jupiterOS/OSSettings")
+pastebinGet("uVGMM8Xj","jupiterOS/OSSettings")
+print("jupiterOS/jupiterDraw")
+pastebinGet("CYX0QsnV","jupiterOS/jupiterDraw")
+print("jupiterOS/programRunner")
+pastebinGet("xjuaQ1Gp","jupiterOS/programRunner")
+print("jupiterOS/widgetRunner")
+pastebinGet("vt880Xg6","jupiterOS/widgetRunner")
+print("jupiterOS/fileBrowser")
+pastebinGet("abi9NYmm","jupiterOS/fileBrowser")
+print("jupiterOS/files/manual")
+pastebinGet("XEphy6eW","jupiterOS/files/manual")
+print("jupiterOS/updater")
+pastebinGet("Z8XmLZme","jupiterOS/updater")
+print("jupiterOS/files/jupiterSettings")
+pastebinGet("4tdpSRCn","jupiterOS/files/jupiterSettings")
+print("jupiterOS/files/programs")
+pastebinGet("dyTbxjEK","jupiterOS/files/programs")
+print("jupiterOS/files/widgets")
+pastebinGet("XdiVBhFE","jupiterOS/files/widgets")
+print("jupiterOS/files/icons/iconTemplate")
+pastebinGet("mhUVi4zw","jupiterOS/files/icons/iconTemplate")
+print("jupiterOS/files/icons/fileBrowserIcon")
+pastebinGet("sUXKxDYc","jupiterOS/files/icons/fileBrowserIcon")
+print("jupiterOS/files/icons/osSettingsIcon")
+pastebinGet("1a8MJFJh","jupiterOS/files/icons/osSettingsIcon")
+
+print("	Extras:")
+
+print("Making 'applications', 'icons', and 'widgets' directories")
+if not fs.exists("applications") then
+	fs.makeDir("applications")
+end
+if not fs.exists("icons") then
+	fs.makeDir("icons")
+end
+if not fs.exists("widgets") then
+	fs.makeDir("widgets")
+end
+
+print("Getting Extra Files.")
+print("widgets/clockWidget")
+pastebinGet("LeMG2DT3","widgets/clockWidget")
+print("icons/djIcon")
+print("jupiterOS/files/programTemplate")
+pastebinGet("6mg8t3fR","jupiterOS/files/programTemplate")
+print("icons/djIcon")
+pastebinGet("MctmmQS3","icons/djIcon")
+print("icons/wormIcon")
+pastebinGet("r14TS9wi","icons/wormIcon")
+print("icons/adventureIcon")
+pastebinGet("Y3FaXhGC","icons/adventureIcon")
+print("icons/luaPromptIcon")
+pastebinGet("uZY08iYU","icons/luaPromptIcon")
+
+print("Making startup file")
+if fs.exists("startup") then
+	fs.delete("startup")
+end
+newFile = fs.open("startup","w")
+newFile.write("shell.run('jupiterOS/jupiter')")
+newFile.close()
+
+print("Installation Successful!")
+print("Rebooting in...")
+sleep(0.25)
+print("3")
+sleep(0.75)
+print("2")
+sleep(0.75)
+print("1")
+sleep(0.75)
+os.reboot()

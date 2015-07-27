@@ -1,0 +1,7 @@
+a = {}
+a[1] = "speaker_0"
+a[2] = "speaker_1"
+for e,id in pairs(a) do
+n = peripheral.wrap(id)
+n.speak("test")
+end

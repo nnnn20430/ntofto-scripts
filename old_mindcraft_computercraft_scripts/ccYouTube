@@ -1,0 +1,1539 @@
+local version = "3.21"
+--[[
+  
+	ComputerCraft YouTube is a program designed to keep everyone up-to-date with
+	the latest Lightshot videos. It utilizes the use of HTTP api and the use of
+	a few string functions to get all the required text off the website.
+	
+	This code was made by and ONLY by remiX, aka Nicholas. I, hereby allow users
+	to use, redistribute and edit the program to their liking IF they keep this comment within
+	the program and add credits if applied into an OS.
+	
+	Enjoy!
+	
+--]]
+
+--[[ Variables ]]--
+local screenX, screenY = term.getSize()
+local running = true
+
+-- Credentials
+local logged = false
+local userInfo = {
+	name = "",
+	username = "",
+	email = "",
+	password = "",
+}
+local inbox = {}
+local menus = { { text = logged and "Prefrences" or "Login", x = 4 }, { text = logged and "Messages" or "", x = logged and 16 or 11 }, { text = logged and "Logout" or "Register", x = logged and 26 or 11 } }
+
+-- Files paths
+local sourceFolder = ".ccYouTube"
+local errorLocation = sourceFolder .. "/errorLog.txt"
+local ccYouTubeLocation = shell.getRunningProgram()
+
+-- Load Loading Screen API
+os.loadAPI(sourceFolder .. "/apis/loadingScreen")
+
+-- Other
+local selectedMenu = "Home"
+
+-- URLs
+local serverURL = "http://www.cc-youtube.hostei.com"
+
+-- Tables
+local t_Programs = {}
+
+local t_Folders = {
+	{ sFolderName = "downloads", sPath = sourceFolder .. "/downloads" },
+	{ sFolderName = "apis", sPath = sourceFolder .. "/apis" },
+	{ sFolderName = "recycleBin", sPath = sourceFolder .. "/recycleBin" },
+	{ sFolderName = "logos", sPath = sourceFolder .. "/logos" },
+}
+
+local t_NeededFiles = {
+	{ sFileName = "Extended String Library", sUrl = "zeG34tu6", sPath = sourceFolder .. "/apis/extStrLib", sType = "api"},
+	{ sFileName = "Box Function", sUrl = "R84v3P9G", sPath = sourceFolder .. "/apis/box", sType = "api"},
+}
+
+local t_logos = {
+	["home"] = paintutils.loadImage( sourceFolder .. "/logos/home" ),
+	["logo"] = paintutils.loadImage( sourceFolder .. "/logos/ccytLogo" ),
+	["loadLogo"] = {
+		"                 f  f       eeeee   e      ",
+		"                 f  f         e     e      ",
+		" 9999  9999      ffff fff f f e e e eee eee",
+		"9     9             f f f f f e e e e e e e",
+		"9     9     ffff    f f f f f e e e e e eee",
+		"9     9             f f f f f e e e e e e  ",
+		" 9999  9999      ffff fff fff e eee eee eee",
+	}
+}
+
+local t_Menus = {
+	["MainScreen"] = {
+		-- top bar
+		{ text = "Account", xPos = 2, yPos = 2 },
+		{ text = "Home", xPos = 14, yPos = 2 },
+		-- middle bar
+		{ text = "Local Gallery", xPos = 2, yPos = 3 },
+		{ text = "Website Gallery", xPos = 20, yPos = 3 },
+		{ text = "Upload", xPos = screenX - 6, yPos = 3 },
+		-- Bottom bar
+		{ text = "Help", xPos = 2, yPos = 4 },
+		{ text = "Credits", xPos = 16, yPos = 4 },
+		{ text = "Update", xPos = 30, yPos = 4 },
+		{ text = "Exit", xPos = screenX - 4, yPos = 4 },
+	}
+}
+
+local t_Credits = {
+	{ text = "Developer:", col = colours.cyan },
+	{ text = "remiX", col = colours.cyan },
+	{ text = "", col = colours.white },
+	{ text = "APIS:", col = colours.red },
+	{ text = "TheOriginalBIT", col = colours.blue },
+	{ text = "- Loading Screen", col = colours.black },
+	{ text = "- Extended String Library", col = colours.black },
+	{ text = "", col = colours.white },
+	{ text = "HTTP", col = colours.orange },
+	{ text = "Orwell", col = colours.blue },
+	{ text = "- string.gmatch and http.post help", col = colours.black },
+	{ text = "Bubba", col = colours.blue },
+	{ text = "- string.gmatch help", col = colours.black },
+	{ text = "GravityScore", col = colours.blue },
+	{ text = "- PHP Help / Mailing system", col = colours.black },
+}
+
+local helpText = {
+	{	head = "Logging in", text = {
+			"How to login", "",
+			" Click the 'Account' menu and",
+			"enter your personal credentials.",
+			'',
+			' Remember: You may login using',
+			'your username or email address',
+			'if you had registered your account',
+			'with one.'
+		}	},
+	{ head = "Registering", text = {
+			"How to register an account", "",
+			" Click the 'Account' menu and",
+			"then select 'Register' from the",
+			"smaller screen.",
+			" Here you enter your name,",
+			"email address, username and",
+			"password. Name and email boxes",
+			'are optional.',
+			' Passwords are heavily secured.'
+		}	},
+	{	head = "Uploading",	text = {
+			"How to upload a video", "",
+			"Select 'Upload' from the menu", "",
+			" In order to successfully upload",
+			"a video, you must enter a valid",
+			"video title, username and pastebin",
+			"code.",
+			" Then you are able to supply a",
+			"description about the video.",
+			" A dialogue box will appear to show",
+			"if the upload was successful or not."
+		}	},
+	{	head = "Downloading",
+		text = {
+			"How to download a video", "",
+			" Select 'Website Gallery' from the",
+			"menu.", "",
+			" Use arrow keys or mouse to scroll",
+			"up and down to change your selection",
+			"and then hit enter to view details",
+			"on the video.",
+			" You can click the 'download' button",
+			"to download the video and it will be",
+			"added to your local gallery."
+		}	},
+	{	head = "Changelog",
+		text = {
+			"What's new", "",
+			" - v3.0",
+			"  - Complete re-write of the GUI",
+			"  - New and better menu",
+			"  - New display of the website and",
+			"    local gallery which is now in",
+			"    the form of a table",
+			"  - Added help screen",
+			"  - Removed control panel menu",
+			"  - Login system soon to come"
+		}	},
+	{	head = "About",
+		text = {
+			"About CC-YouTube", "",
+			" ComputerCraft YouTube is a program",
+			"designed to handle videos that have",
+			"been recorded by Lightshot (by",
+			"GravityScore).",
+			" You can download, upload and play",
+			"videos from your minecraft computer.", "",
+			"Last update: v3.21, 03/17/2013"
+		}	}
+}
+--[[ End of Variables ]]--
+
+term.setTextColour(colours.red)
+if not term.isColor() or turtle then
+	print("Error; Advanced Computer Required.")
+	return
+elseif not http then
+	print("Error; HTTP needs to be enabled.")
+	return
+elseif not loadingScreen.getVersion then
+	print("Error; Loading screen API cannot be found")
+	return
+end
+
+--[[ Functions ]]--
+local function getCenter( l, x1, x2 )
+	return math.floor( ( ( x2 + x1 ) - ( type(l) == 'string' and #l or l ) ) / 2 ) + 1
+end
+
+local function centerWrite( text, yPos, txtCol, bgCol )
+	term.setCursorPos( ( screenX - #text ) / 2, yPos )
+	term.setTextColour( txtCol )
+	if bgCol then term.setBackgroundColour( bgCol ) end
+	write( text )
+end
+
+local function leftWrite( text, yPos, txtCol, bgCol )
+	term.setCursorPos( 1, yPos )
+	term.setTextColour( txtCol )
+	term.setBackgroundColour( bgCol )
+	write( text )
+end
+
+local function rightWrite( text, yPos, txtCol, bgCol )
+	term.setCursorPos( screenX - #text, yPos )
+	term.setTextColour( txtCol )
+	term.setBackgroundColour( bgCol )
+	write( text )
+end
+
+local function sWrite( text, xPos, yPos, txtCol, bgCol )
+	term.setCursorPos( xPos, yPos )
+	if txtCol then term.setTextColour( txtCol ) end
+	if bgCol then term.setBackgroundColour( bgCol ) end
+	write( text )
+end
+
+local function isValidClick(_table, mx, my)
+	for i, v in pairs(_table) do
+		if mx >= v.xPos and mx < v.xPos + #v.text
+		and my == v.yPos and selectedMenu ~= v.text then
+			selectedMenu = v.text
+			return true, v.text
+		end
+	end
+	return false, nil
+end
+
+local function limitRead( nLimit, replaceChar, tmpString, dispInvalid, startX, oldCol, useTmpBut, tmpBtnSX, tmpBtnEX, tmpBtnY, btnOpt )
+	term.setCursorBlink(true)
+	local cX, cY = term.getCursorPos()
+	local rString = tmpString or ''
+	write( rString:sub( #rString >= nLimit and #rString - nLimit or 1 ) )
+	replaceChar = replaceChar and replaceChar:sub( 1, 1 ) or nil
+	if replaceChar == "" then replaceChar = nil end
+	while true do
+		local event, p1, x, y = os.pullEvent()
+		if event == "char" then
+			-- Character event
+			if #rString + 1 <= nLimit then
+				rString = rString .. p1
+				write(replaceChar or p1)
+			else
+				term.setCursorPos( startX, cY )
+				rString = rString .. p1
+				write( replaceChar and string.rep( replaceChar, nLimit ) or rString:sub( #rString - nLimit ) )
+			end
+		elseif event == "key" then
+			if p1 == keys.backspace and #rString >= 1 then
+				-- Backspace
+				rString = rString:sub( 1, #rString - 1 )
+				xPos, yPos = term.getCursorPos()
+				term.setCursorPos(xPos-1, yPos)
+				write(" ")
+				term.setCursorPos(xPos-1, yPos)
+				if #rString > nLimit then
+					term.setCursorPos( startX, cY )
+					write( replaceChar and string.rep( replaceChar, nLimit ) or rString:sub( #rString - nLimit ) )
+				end
+			elseif p1 == keys.enter then
+				if #rString <= 3 and dispInvalid then
+					term.setCursorBlink(false)
+					mx, my = term.getCursorPos()
+					sWrite( "invalid", screenX - 3 - string.len("invalid"), cY, colours.red, nil )
+					pcall(sleep, 1)
+					sWrite( "       ", screenX - 3 - string.len("invalid"), cY )
+					if oldCol then term.setTextColour( oldCol ) end
+					term.setCursorPos(mx,my)
+					term.setCursorBlink(true)
+				else 
+					term.setCursorBlink(false)
+					return rString
+				end
+			end
+		elseif event == "mouse_click" and p1 == 1 then
+			if isValidClick( t_Menus["MainScreen"], x, y ) then
+				break
+			elseif useTmpBut and x >= tmpBtnSX and x < tmpBtnEX and y == tmpBtnY then
+				term.setCursorBlink(false)
+				if btnOpt == 'kill' then
+					return nil
+				else return rString end
+			end
+		end
+	end
+end
+
+local function colorW(...)
+	local curColor
+	for i=1, #arg do -- arg is ...
+		if type(arg[i]) == 'number' then
+			curColor = arg[i]
+		else
+			if curColor then
+				term.setTextColor(curColor)
+			end
+			write(arg[i])
+		end
+	end
+end
+
+local function drawScreen( opt )
+	term.clear()
+	paintutils.drawImage( t_logos[opt], 1, 1 )
+	
+	leftWrite( " ComputerCraft YouTube", 1, colours.white, colours.blue )
+	rightWrite( "version " .. version, 1, colours.white, colours.blue )
+	for i, v in pairs( t_Menus["MainScreen"] ) do
+		sWrite( v.text, v.xPos, v.yPos, colours.black, v.text == selectedMenu and colours.red or colours.lightGrey )
+	end
+end
+
+local function credits()
+	yPos = 1
+	drawScreen( "home" ) term.setBackgroundColour( colours.white )
+	while true do
+		for i = 6, screenY - 1 do
+			term.setCursorPos( 1, i )
+			if t_Credits[yPos + i - 6] then
+				term.clearLine()
+				centerWrite(t_Credits[yPos + i - 6].text, i, t_Credits[yPos + i - 6].col )
+			else
+				break
+			end
+		end
+		
+		local event, but, x, y = os.pullEvent()
+		if event == "mouse_scroll" or event == "key" then
+			if ( but == -1 or but == keys.up ) and yPos > 1 then
+				yPos = yPos - 1
+			elseif ( but == 1 or but == keys.down ) and yPos < #t_Credits - 12 then
+				yPos = yPos + 1
+			end
+		elseif isValidClick( t_Menus["MainScreen"], x, y ) then
+			break
+		end
+	end
+end
+
+local function websiteGallery()
+	-- Get the list of programs
+	local function getList()
+		sWrite( "Retrieving List...", 5, 6, colours.red, colours.white )
+		
+		t_Programs = {}
+		local response = http.get("http://cc-youtube.hostei.com/print-info.php")
+		local sourceText = response.readAll()
+		response.close()
+		
+		index = 1
+		for id in sourceText:gmatch('<ID>(.-)</ID>') do
+			t_Programs[index] = {}
+			t_Programs[index].id = id
+			index = index + 1
+		end
+
+		index = 1
+		for user in sourceText:gmatch('<USER>(.-)</USER>') do
+			t_Programs[index].user = user
+			index = index + 1
+		end
+
+		index = 1
+		for title in sourceText:gmatch('<TITLE>(.-)</TITLE>') do
+			t_Programs[index].title = title
+			index = index + 1
+		end
+
+		index = 1
+		for code in sourceText:gmatch('<URL>(.-)</URL>') do
+			t_Programs[index].code = code
+			index = index + 1
+		end
+
+		index = 1
+		for desc in sourceText:gmatch('<DESC>(.-)</DESC>') do
+			t_Programs[index].desc = desc
+			index = index + 1
+		end
+
+		index = 1
+		for pDate in sourceText:gmatch('<POSTDATE>(.-)</POSTDATE>') do
+			t_Programs[index].postDate = pDate
+			index = index + 1
+		end
+	end
+	
+	local function download(t)
+		drawScreen( "home" )
+		sWrite( "Downloading video ...", 5, 6, colours.red, colours.white )
+		sWrite( t.title, 5, 7, colours.blue, colours.white )
+		local response = http.get("http://pastebin.com/raw.php?i="..textutils.urlEncode( t.code ))
+		sWrite( response and "Successfully downloaded video!" or "Failed to download file", 5, 6, response and colours.lime or colours.red, colours.white )
+		if response then
+			fHandle = fs.open(sourceFolder .. "/downloads/" .. extStrLib.replace(t.title, " ", "_"), "w")
+			fHandle.write([[
+-- File downloaded by ComputerCraft YouTube
+-- 
+--        Title: ]] .. t.title .. [[ 
+--         User: ]] .. t.user .. [[ 
+-- Pastebin URL: www.pastebin.com/]] .. t.code .. [[ 
+--    Timestamp: ]] .. t.postDate .. '\n\n' .. response.readAll() )
+			fHandle.close()
+			response.close()
+		end
+		centerWrite( "[back]", screenY, colours.black, colours.white )
+		while true do
+			local e, butt, x, y = os.pullEvent()
+			if e == "mouse_click" and butt == 1 then
+				if x >= math.floor( ( screenX - string.len( "[back]" ) ) / 2 ) and x < math.floor( ( screenX - string.len( "[back]" ) ) / 2 ) + string.len( "[back]" )
+				and y == screenY then
+					-- Back
+					break
+				elseif isValidClick( t_Menus["MainScreen"], x, y ) then
+					-- Change of selected menu
+					break
+				end
+			end
+		end
+	end
+	
+	local function info(t)
+		term.setBackgroundColour( colours.white )
+		term.clear()
+		local isInstalled = fs.exists( sourceFolder .. "/downloads/" .. extStrLib.replace(t.title, " ", "_") )
+		
+		term.setBackgroundColour( colours.blue )
+		term.setCursorPos(1,1)
+		term.setTextColour( colours.white )
+		local tmp = " " .. t.title .. " - " .. t.code
+		write( tmp .. string.rep(" ", screenX - #tmp) )
+		
+		term.setBackgroundColour( colours.white )
+		term.setCursorPos( math.floor( ( screenX*0.5 - string.len("[back]") ) / 2 ), screenY ) colorW( colours.black, "[back]" )
+		term.setCursorPos( math.floor( ( screenX*1.5 - string.len( isInstalled and "[installed]" or "[download]" ) ) / 2 ), screenY ) colorW( colours.black, isInstalled and "[installed]" or "[download]" )
+		term.setCursorPos(2, 3)	colorW(colours.grey, "    File Name: ", colours.red, t.title)
+		term.setCursorPos(2, 4)	colorW(colours.grey, "         User: ", colours.red, t.user)
+		term.setCursorPos(2, 5)	colorW(colours.grey, "Pastebin Code: ", colours.red, t.code)
+		term.setCursorPos(2, 6)	colorW(colours.grey, "    Timestamp: ", colours.blue, t.postDate)
+		term.setCursorPos(2, 8)	colorW(colours.grey, "  Description: ")
+		parallel.waitForAny(
+			function() box.textBox(colours.red, colours.orange, 1, screenX, 9, screenY - 1, t.desc) end,
+			function()
+				while true do
+					local eve, butt, x, y = os.pullEvent()
+					if eve == "mouse_click" and butt == 1 then
+						if x >= math.floor( ( screenX*0.5 - string.len("[back]") ) / 2 ) and x < math.floor( ( screenX*0.5 - string.len("[back]") ) / 2 ) + string.len("[back]")
+						and y == screenY then
+							-- Back
+							break
+						elseif x >= math.floor( ( screenX*1.5 - string.len("[download]") ) / 2 ) and x < math.floor( ( screenX*1.5 - string.len("[download]") ) / 2 ) + string.len("[download]")
+						and y == screenY and not isInstalled then
+							-- Download
+							download(t)
+							break
+						end
+					end
+				end
+			end
+		)
+	end
+	
+	local function drawTableArea()
+		box.fillArea( 5, 50, 6, 6, colours.blue )
+		-- File name area
+			-- Heading
+				sWrite( 'Name', getCenter( 4, 5, 30 ), 6, colours.white, colours.blue )
+			-- Contents
+				--box.fillArea( 5, 30, 7, screenY - 2, colours.grey )
+		-- File code area
+			-- Heading
+				sWrite( 'Code', getCenter( 4, 31, 40 ), 6, colours.white, colours.blue )
+			-- Contents
+				--box.fillArea( 31, 40, 7, screenY - 2, colours.lightGrey )
+		-- File timestamp area
+			-- Heading
+				sWrite( 'Time', getCenter( 4, 41, 50 ), 6, colours.white, colours.blue )
+			-- Contents
+				--box.fillArea( 41, 50, 7, screenY - 2, colours.grey )
+		
+		-- Other
+			-- Refresh button
+				centerWrite( "[refresh]", screenY, colours.black, colours.white )
+	end
+	
+	drawScreen( "home" )
+	getList()
+	drawTableArea()
+	local yPos = 1
+	local sel = 1
+	while true do
+		for i = 7, 17 do
+			if t_Programs[i + yPos - 7] then
+				local t = t_Programs[i + yPos - 7].title
+				local c = t_Programs[i + yPos - 7].code
+				local p = t_Programs[i + yPos - 7].postDate
+				
+				sWrite( sel == i + yPos - 7 and ">> " or ( fs.exists( sourceFolder .. '/downloads/' .. extStrLib.replace( t, " ", "_" ) ) and " + " or "   " ), 2, i, sel == i + yPos - 7 and colours.red or ( fs.exists( sourceFolder .. '/downloads/' .. extStrLib.replace( t, " ", "_" ) ) and colours.lime or colours.black ), colours.white )
+				sWrite( ' ' .. ( t:len() > 24	and t:sub( 1, 20 ) .. " ... " or t .. string.rep(' ', 25 - t:len() ) ), 5, i, ( i + yPos - 7 ) % 2 == 0 and colours.lightBlue or colours.black, ( i + yPos - 7 ) % 2 == 0 and colours.black or colours.orange )
+				sWrite( ' ' .. ( c:len() > 9 and c:sub( 1, 4 ) .. " ... " or c .. string.rep(' ', 9 - c:len() ) ), 31, i, ( i + yPos - 7 ) % 2 == 0 and colours.lightBlue or colours.black, ( i + yPos - 7 ) % 2 == 0 and colours.black or colours.orange )
+				sWrite( ' ' .. p:sub( 1, 6 ) .. '.. ', 41, i, ( i + yPos - 7 ) % 2 == 0 and colours.lightBlue or colours.black, ( i + yPos - 7 ) % 2 == 0 and colours.black or colours.orange )
+			else
+				break
+			end
+		end
+		local e, butt, x, y = os.pullEvent()
+		if e == "mouse_click" and butt == 1 then
+			if x >= math.floor( ( screenX - string.len("[refresh]") ) / 2 ) and x <= math.floor( ( screenX - string.len("[refresh]") ) / 2 ) + string.len("[refresh]")
+			and y == screenY then
+				break
+			else
+				local bValid, sOption = isValidClick( t_Menus["MainScreen"], x, y )
+				if bValid then selectedMenu = sOption return end
+			end
+		elseif ( e == "mouse_scroll" ) or ( e == "key" ) then
+			if butt == 1 or butt == keys.down then -- down
+				if sel < #t_Programs then
+					sel = sel + 1
+				end
+				if yPos < #t_Programs - 10 and sel >= 12 then
+					yPos = yPos + 1
+				end
+			elseif butt == -1 or butt == keys.up then -- up
+				if yPos > 1 then
+					yPos = yPos - 1
+				end
+				if sel > 1 then
+					sel = sel - 1
+				end
+			elseif butt == keys.enter then
+				info({
+					title = t_Programs[ sel ].title,
+					code = t_Programs[ sel ].code,
+					user = t_Programs[ sel ].user,
+					postDate = t_Programs[ sel ].postDate,
+					desc = t_Programs[sel].desc
+				})
+				sel = 1
+				yPos = 1
+				drawScreen( "home" )
+				drawTableArea()
+			end
+		end
+	end
+end
+
+local function checkForUpdate()
+	drawScreen( "home" )
+	sWrite( "Checking for updates ...", 4, 6, colours.red, colours.white )
+	sWrite( "Checking for updates ...", 4, 6, colours.red, colours.white )
+	local response = http.get( "https://raw.github.com/remiX-/ccYouTube/master/ComputerCraft%20YouTube" )
+	local v = string.sub(response.readLine(), 18, -2)
+	response.close()
+	
+	if version ~= v then
+		sWrite( "Update found!", 4, 6, colours.red, colours.white )
+		local opt = box.confirmBox(colours.grey, colours.lightGrey, colours.red, colours.white, 5, screenX - 5, 6, "Update Now", "Would you like to update?", "Your version: " .. version, "Update version: " .. v)
+		drawScreen( "home" )
+		if opt == "YES" then
+			sWrite( "Updating ...", 4, 6, colours.black, colours.white )
+			local response = http.get( "https://raw.github.com/remiX-/ccYouTube/master/ComputerCraft%20YouTube" )
+			local content = response.readAll()
+			response.close()
+			local f = fs.open( ccYouTubeLocation, "w")
+			f.write( content )
+			f.close()
+			sWrite( "Done!          ", 4, 6, colours.lightGrey, colours.white )
+			sWrite( "Changes will be applied after", 4, 8, colours.lightGrey, colours.white )
+			sWrite( "a program restart.", 4, 9, colours.lightGrey, colours.white )
+		else
+			sWrite( "Update cancelled.", 4, 6, colours.lightGrey, colours.white )
+		end
+	else
+		sWrite( "Your client is up-to-date.", 4, 6, colours.lightGrey, colours.white )
+	end
+	
+	while true do
+		e, butt, x, y = os.pullEvent()
+		if e == "mouse_click" and butt == 1 then
+			if isValidClick( t_Menus["MainScreen"], x, y) then break end
+		end
+	end
+end
+
+local function localGallery()
+	local fileList = fs.list(sourceFolder .. "/downloads/")
+	local files = {}
+	
+	local function updateList()
+		fileList = fs.list( sourceFolder .. "/downloads/" )
+		files = {}
+		for i = 1, #fileList do
+			local f = fs.open( sourceFolder .. "/downloads/" .. fileList[i], "r" )
+			local tmp = {}
+			for p = 1, 6 do
+				tmp[p] = f.readLine()
+			end
+			f.close()
+			table.remove( tmp, 1 ) table.remove( tmp, 1 )
+			table.insert( files, {
+				title = extStrLib.replace( tmp[1]:sub( 18, -2 ), "_", " " ),
+				user = tmp[2]:sub( 18, -2 ),
+				code = extStrLib.replace( tmp[3]:sub( 18, -2 ), "www.pastebin.com/", "" ),
+				postDate = tmp[4]:sub( 18, -2 ),
+			} )
+		end
+	end
+
+	local function drawTableArea()
+		box.fillArea( 5, 50, 6, 6, colours.blue )
+		-- File name area
+			-- Heading
+				sWrite( 'Name', getCenter( 4, 5, 30 ), 6, colours.white, colours.blue )
+			-- Contents
+				box.fillArea( 5, 30, 7, screenY - 2, colours.grey )
+		-- File code area
+			-- Heading
+				sWrite( 'User', getCenter( 4, 31, 50 ), 6, colours.white, colours.blue )
+			-- Contents
+				box.fillArea( 31, 50, 7, screenY - 2, colours.lightGrey )
+	end
+	
+	local function info(t)
+		drawScreen( "home" )
+		
+		term.setBackgroundColour( colours.white )
+		
+		term.setCursorPos(2, 6)	colorW( colours.blue, "Viewing video" )
+		term.setCursorPos(2, 8)	colorW(colours.grey, "        Title: ", colours.red, t.title)
+		term.setCursorPos(2, 9)	colorW(colours.grey, "     Uploader: ", colours.red, t.user)
+		term.setCursorPos(2, 10)	colorW(colours.grey, "Pastebin Code: ", colours.red, t.code)
+		term.setCursorPos(2, 11)	colorW(colours.grey, "    Timestamp: ", colours.blue, t.postDate)
+		
+		term.setCursorPos( math.floor( ( screenX*0.5 - string.len("[play]") ) / 2 ), screenY ) colorW( colours.black, "[play]" )
+		term.setCursorPos( math.floor( ( screenX - string.len("[back]") ) / 2 ), screenY ) colorW( colours.black, "[back]" )
+		term.setCursorPos( math.floor( ( screenX*1.5 - string.len("[delete]") ) / 2 ), screenY ) colorW( colours.black, "[delete]" )
+		
+		while true do
+			local e, but, x, y = os.pullEvent()
+			if e == "mouse_click" and but == 1 then
+				if x >= math.floor( ( screenX*0.5 - string.len("[play]") ) / 2 ) and x < math.floor( ( screenX*0.5 - string.len("[play]") ) / 2 ) + string.len("[play]") and y == screenY then
+					drawScreen( "home" )
+					term.setCursorPos(4, 8)
+					colorW(colours.red, "Press ", colours.black, "F1", colours.red, " to stop the playback.")
+					for i = 3, 1, -1 do
+						term.setCursorPos(4, 6)
+						colorW(colours.black, "Starting video in ", 2^math.random(1,15), tostring(i), colours.black, "...")
+						pcall(sleep, 1)
+					end
+					parallel.waitForAny( function()	shell.run(sourceFolder .. "/downloads/" .. extStrLib.replace( t.title, " ", "_" ) ) end, function() repeat _, k = os.pullEvent("key") until k == 59 end)
+					term.setCursorBlink(false)
+					return info( t )
+				elseif x >= math.floor( ( screenX - string.len("[back]") ) / 2 ) and x < math.floor( ( screenX - string.len("[back]") ) / 2 ) + string.len("[back]") and y == screenY then
+					break
+				elseif x >= math.floor( ( screenX*1.5 - string.len("[delete]") ) / 2 ) and x < math.floor( ( screenX*1.5 - string.len("[delete]") ) / 2 ) + string.len("[delete]") and y == screenY then
+					opt = box.confirmBox(colours.grey, colours.lightGrey, colours.red, colours.white, 5, screenX - 5, 6, "Confirm", "Are you sure you want to", "delete the file?", t.title )
+					if opt == "YES" then
+						if fs.exists(sourceFolder .. "/recycleBin/" .. extStrLib.replace( t.title, " ", "_" ) ) then
+							fs.delete(sourceFolder .. "/recycleBin/" .. extStrLib.replace( t.title, " ", "_" ) )
+						end
+						fs.move(sourceFolder .. "/downloads/" .. extStrLib.replace( t.title, " ", "_" ), sourceFolder .. "/recycleBin/" .. extStrLib.replace( t.title, " ", "_" ) )
+						updateList()
+						break
+					end
+					return info( t )
+				else
+					local bValid, sOption = isValidClick( t_Menus["MainScreen"], x, y )
+					if bValid then
+						selectedMenu = sOption
+						return false
+					end
+				end
+			end
+		end
+	end
+	
+	drawScreen( "home" )
+	drawTableArea()
+	updateList()
+	
+	local yPos = 1
+	local sel = 1
+	while true do
+		for i = 7, 17 do
+			if files[i + yPos - 7] then
+				local t = files[i + yPos - 7].title
+				local u = files[i + yPos - 7].user
+				local p = files[i + yPos - 7].postDate
+				term.setCursorPos(2, i)
+				term.setBackgroundColour( colours.white )
+				colorW( colours.red, sel == i + yPos - 7 and ">> " or "   " )
+				term.setCursorPos(6, i)
+				term.setBackgroundColour( colours.grey )
+				colorW( ( i + yPos - 7 ) % 2 == 0 and colours.lightBlue or colours.blue, t:len() > 24 and t:sub( 1, 19 ) .. " ..." or t .. string.rep(' ', 24 - t:len() ) )
+				term.setCursorPos(32, i)
+				term.setBackgroundColour( colours.lightGrey )
+				colorW( ( i + yPos - 7 ) % 2 == 0 and colours.lightBlue or colours.blue, u:len() > 19 and u:sub( 1, 14 ) .. " ..." or u .. string.rep(' ', 19 - u:len() ) )
+			else
+				break
+			end
+		end
+		if #files == 0 then term.setCursorPos( 8, 8 ) term.setBackgroundColour( colours.grey ) colorW( colours.red, "No local videos :(" ) end
+		local e, butt, x, y = os.pullEvent()
+		if e == "mouse_click" and butt == 1 then
+			bValid, sOption = isValidClick( t_Menus["MainScreen"], x, y )
+			if bValid then selectedMenu = sOption return end
+		elseif ( e == "mouse_scroll" ) or ( e == "key" ) then
+			if butt == 1 or butt == keys.down then -- down
+				if sel < #files then
+					sel = sel + 1
+				end
+				if yPos < #files - 10 and sel >= 12 then
+					yPos = yPos + 1
+				end
+			elseif butt == -1 or butt == keys.up then -- up
+				if yPos > 1 then
+					yPos = yPos - 1
+				end
+				if sel > 1 then
+					sel = sel - 1
+				end
+			elseif butt == keys.enter then
+				if not info( files[ sel ] ) then break end
+				drawScreen( "home" )
+				drawTableArea()
+			end
+		end
+	end
+end
+
+local function postVideo( tmp )
+	local info = tmp or { ["title"] = "", ["name"] = logged and userInfo.username or "", ["code"] = "", ["desc"] = {""} }
+	
+	drawScreen( "home" )
+	
+	term.setBackgroundColour(colours.white)
+	term.setCursorPos( 3, 6 )
+	colorW(colours.blue, "Upload your video!")
+	term.setCursorPos( 3, 14 )
+	colorW(colours.red, "* ", colours.black, "'code' box needs only pastebin code")
+	
+	box.fillArea( 3, screenX - 2, 7, 13, colours.lightGrey )
+	box.fillArea( 12, screenX - 4, 8, 8, colours.grey )
+	box.fillArea( 12, screenX - 4, 10, 10, colours.grey )
+	box.fillArea( 12, screenX - 4, 12, 12, colours.grey )
+	
+	-- "Video Title"
+	sWrite( "Title:", 5, 8, colours.red, colours.lightGrey )
+	sWrite( info.title:sub( info.title:len() > 33 and info.title:len() - 33 or 1 ), 13, 8, colours.orange, colours.grey )
+	
+	-- "Name"
+	sWrite( "Name:", 6, 10, colours.red, colours.lightGrey )
+	sWrite( info.name:sub( info.name:len() > 33 and info.name:len() - 33 or 1 ), 13, 10, colours.orange, colours.grey )
+	
+	-- "Code"
+	sWrite( "Code:", 6, 12, colours.red, colours.lightGrey )
+	sWrite( info.code:sub( info.code:len() > 33 and info.code:len() - 33 or 1 ), 13, 12, colours.orange, colours.grey )
+	term.setTextColour( colours.orange )
+	term.setBackgroundColour( colours.grey )
+	-- Get title
+	term.setCursorPos(13, 8)
+	local title = limitRead( 33, nil, info.title, true, 13, colours.orange )
+	info["title"] = title
+	if not info["title"] then return end
+	
+	-- Get Name
+	if not logged then
+		term.setCursorPos(13, 10)
+		local name = limitRead( 33, nil, info.name, true, 13, colours.orange )
+		info["name"] = name
+		if not info["name"] then return end
+	end
+	
+	-- Get code
+	term.setCursorPos(13, 12)
+	local code = limitRead( 33, nil, info.code, true, 13, colours.orange )
+	info["code"] = code
+	if not info["code"] then return end
+	
+	drawScreen( "home" )
+	sWrite( "Description", 2, 7, colours.black, colours.white )
+	centerWrite( "[upload]", screenY, colours.black, colours.white ) 
+	local restart = false
+	parallel.waitForAny(
+		function()
+			box.textField( colours.blue, colours.white, 1, screenX, 8, screenY - 2, info.desc )
+		end,
+		function()
+			while true do
+				local ev, but, x, y = os.pullEvent("mouse_click")
+				if x >= math.floor( ( screenX - string.len("[upload]") ) / 2 ) and x <= math.floor( ( screenX - string.len("[upload]") ) / 2 ) + 8
+				and y == screenY and but == 1 then
+					-- "Apply"
+					info.desc = box.getTable()
+					if info.desc[1]:len() > 0 then
+						term.setCursorBlink(false)
+						local description = ""
+						for i = 1, #info.desc do
+							description = description .. info.desc[i] .. (i ~= #info.desc and "\n" or "")
+						end
+						
+						local params = string.format("username=%s&video_title=%s&pastebin_code=%s&description=%s&submit_post=send", info.name, info.title, info.code, description)
+						local res = http.post( serverURL .. "/upload.php/", params)
+						local isValidCode
+						if res then
+							local content = res.readAll()
+							res.close()
+							infoMessage = content:match( '<INFO>(.-)</INFO>' )
+							isValidCode = infoMessage == "Your video has been added!"
+							box.dialogBox(colours.lightGrey, colours.grey, colours[isValidCode and "lime" or "red"], colours.white, 5, screenX - 5, 6, isValidCode and "Success!" or "Error", isValidCode and "Your video has been uploaded" or "An error has occured:", isValidCode and "" or infoMessage )
+						else
+							box.dialogBox(colours.lightGrey, colours.grey, colours.red, colours.white, 10, screenX - 10, 6, "Error", "An error has occured:", "Server is not responding.", "Please try again later.")
+						end
+						restart = not isValidCode
+						break
+					end
+				elseif isValidClick( t_Menus["MainScreen"], x, y ) then
+					-- Change menu
+					break
+				end
+			end
+		end
+	)
+	if restart then return postVideo( info ) end
+end
+
+local function home()
+	local barOut = false
+	local text = {
+		'ComputerCraft YouTube Homepage',
+		'',
+		' version ' .. version .. ' is now out with',
+		'a newly implemented menu tab',
+		'for registering and logging in',
+		'into your own personal account.',
+		' Test it out and send remiX some',
+		'feedback for fast new releases!'
+	}
+
+	local function transEffect( s )
+		if s == "out" then
+			term.setBackgroundColour( colours.orange )
+			for x = 1, 35 do
+				for y = screenY - 10, screenY - 1 do
+					term.setCursorPos( x, y )
+					write( ' ' )
+				end
+				if x > 2 then
+					for i = 1, #text do
+						leftWrite( ' ' .. text[i]:sub( math.abs( x - 36 ) ), i + 9, i == 1 and colours.blue or colours.black, colours.orange )
+					end
+				end
+				sleep( 0.05 )
+			end
+		elseif s == "in" then
+			for x = 36, 2, -1 do
+				for i = 1, #text do
+					if text[i] ~= "" then sWrite( text[i]:sub( 37 - x ) .. string.rep( ' ', 33 - #text[i] ), 2, i + 9, i == 1 and colours.blue or colours.black, colours.orange ) end
+				end
+				for y = screenY - 10, screenY - 1 do
+					sWrite( ' ', x, y, colours.red, colours.white )
+				end
+				sleep( 0.05 )
+			end
+			paintutils.drawImage( t_logos["logo"] , 5, 8 )
+		end
+		
+		for y = screenY - 10, screenY - 1 do
+			sWrite( y == math.floor( ( ( screenY - 10 ) + ( screenY - 1 ) ) / 2 ) and (s == "out" and '<' or '>') or ' ', s == "out" and 36 or 1, y, colours.white, colours.blue )
+		end
+	end
+	
+	drawScreen( "home" )
+	paintutils.drawImage( t_logos["logo"] , 5, 8 )
+	
+	for y = screenY - 10, screenY - 1 do
+		leftWrite( y == math.floor( ( ( screenY - 10 ) + ( screenY - 1 ) ) / 2 ) and '>' or ' ', y, colours.white, colours.blue )
+	end
+	
+	while true do
+		local _, but, x, y = os.pullEvent("mouse_click")
+		if isValidClick( t_Menus["MainScreen"], x, y) then break
+		elseif but == 1 and y >= screenY - 7 and y <= screenY - 1 then
+			if x == 1 and not barOut then
+				transEffect( 'out' )
+				barOut = true
+			elseif x == 36 and barOut then
+				transEffect( 'in' )
+				barOut = false
+			end
+		end
+	end
+end
+
+local function help()
+	local function checkClick( x, y )
+		for i, v in pairs( helpText ) do
+			if x >= screenX - 14 and x < screenX - 1 + #v.head and y == i + 9 then
+				return true, v.text
+			end
+		end
+		return false, nil
+	end
+	drawScreen( "home" )
+	box.fillArea( screenX - 14, screenX - 1, 9, 10 + #helpText, colours.blue )
+	term.setTextColour( colours.white )
+	
+	for i, v in pairs( helpText ) do
+		rightWrite( v.head .. ' ', i + 9, colours.white, colours.blue )
+	end
+	box.fillArea( screenX, screenX, 9, 10 + #helpText, colours.white )
+	
+	centerWrite( "ComputerCraft YouTube help section", 6, colours.black, colours.white )
+
+	term.setCursorPos( 1, 9 )
+write([[
+ This section will provide
+ you with the help you need
+ to use ComputerCraft
+ YouTube in the best way.
+
+ Click on a sub-heading on
+ the right and text will be
+ displayed here.]])
+	
+	while true do
+		local e, but, x, y = os.pullEvent()
+		if e == "mouse_click" and but == 1 then
+			local bValid, tText = checkClick( x, y )
+			if bValid then
+				box.fillArea( 1, screenX - 15, 8, screenY, colours.white )
+				for i, v in pairs( tText ) do
+					term.setCursorPos( i == 1 and math.floor( (screenX*0.5+5 - #v ) /2 ) or 1, i + 7 )
+					term.setTextColour( i == 1 and colours.cyan or colours.grey )
+					write( v )
+				end
+			else
+				local bValid, sOption = isValidClick( t_Menus["MainScreen"], x, y )
+				if bValid then
+					selectedMenu = sOption
+					break
+				end
+			end
+		end
+	end
+end
+
+local function account()
+	local screen = logged and "Prefrences" or "Login"
+	local tmpInfo = { ['name'] = "", ['email'] = "", ['username'] = "" }
+	local run = true
+	
+	local function updateMenu() menus = { { text = logged and "Prefrences" or "Login", x = 4 }, { text = logged and "Messages" or "", x = logged and 16 or 11 }, { text = logged and "Logout" or "Register", x = logged and 26 or 11 } } end
+	
+	local function validateCredentials( _type, _user, _pass )
+		local res = http.post( serverURL .. "/verify.php",
+			"type=" .. textutils.urlEncode( _type ) .. "&" ..
+			"username=" .. textutils.urlEncode( _user ) .. "&" ..
+			"password=" .. textutils.urlEncode( _pass ) .. "&" ..
+			"new=" .. textutils.urlEncode( 'banana' ) )
+		if res then
+			local a = res.readAll():gsub( '\n', '' ):gsub( '<%!%-%- Hosting24 Analytics Code %-%-><script type="text/javascript" src="http://stats.hosting24.com/count.php"></script><%!%-%- End Of Analytics Code %-%->', '' )
+			res.close()
+			if a:find("true!") then
+				return true, textutils.unserialize( a:gsub("true!", "") )
+			else
+				return false, a
+			end
+		else
+			return false, "Failed to Connect to server"
+		end
+	end
+	
+	local function registerCredentials( _name, _email, _user, _pass )
+		local res = http.post( serverURL .. "/register.php",
+			"name=" .. textutils.urlEncode( _name ) .. "&" ..
+			"email=" .. textutils.urlEncode( _email ) .. "&" ..
+			"username=" .. textutils.urlEncode( _user ) .. "&" ..
+			"password=" .. textutils.urlEncode( _pass ) .. "&" ..
+			"new=" .. textutils.urlEncode( 'banana' ) )
+		
+		if res then
+			local a = res.readAll():gsub( '\n', '' ):gsub( '<%!%-%- Hosting24 Analytics Code %-%-><script type="text/javascript" src="http://stats.hosting24.com/count.php"></script><%!%-%- End Of Analytics Code %-%->', '' )
+			res.close()
+			if a:find( "Registered " ) then
+				return true, a:gsub("Registered ", '')
+			else
+				return false, textutils.unserialize( a )
+			end
+		else
+			return false, "Failed to Connect to server"
+		end
+	end
+	
+	local function deleteAccount( _user, _pass )
+		local res = http.post( serverURL .. "/deleteaccount.php",
+			"username=" .. textutils.urlEncode( _user ) .. "&" ..
+			"password=" .. textutils.urlEncode( _pass ) )
+			
+		if res then
+			local a = res.readAll():gsub( '\n', '' ):gsub( '<%!%-%- Hosting24 Analytics Code %-%-><script type="text/javascript" src="http://stats.hosting24.com/count.php"></script><%!%-%- End Of Analytics Code %-%->', '' )
+			res.close()
+			return a == "Your account has been deleted.", a
+		else
+			return false, "Failed to Connect to server"
+		end
+	end	
+	
+	local function deleteMsg( _user, _pass, msg )
+		local res = http.post( serverURL .. "/deletemsg.php",
+			"username=" .. textutils.urlEncode( _user ) .. "&" ..
+			"password=" .. textutils.urlEncode( _pass ) .. "&" ..
+			"id=" .. textutils.urlEncode( msg.msgid ) )
+			
+		if res then
+			local a = res.readAll():gsub( '\n', '' ):gsub( '<%!%-%- Hosting24 Analytics Code %-%-><script type="text/javascript" src="http://stats.hosting24.com/count.php"></script><%!%-%- End Of Analytics Code %-%->', '' )
+			res.close()
+			return a == "Message has been deleted.", a
+		else
+			return false, "Failed to Connect to server"
+		end
+	end
+
+	local function retrieveInbox( _user, _pass )
+		local res = http.post(serverURL .. "/get.php",
+			"username=" .. textutils.urlEncode( _user ) .. "&" ..
+			"password=" .. textutils.urlEncode( _pass ) )
+		if res then
+			local a = res.readAll():gsub( '\n', '' ):gsub( '<%!%-%- Hosting24 Analytics Code %-%-><script type="text/javascript" src="http://stats.hosting24.com/count.php"></script><%!%-%- End Of Analytics Code %-%->', '' )
+			res.close()
+			if a:find("true!") then
+				return textutils.unserialize(a:gsub("true!", ""))
+			else
+				return a
+			end
+		else
+			return {}
+		end
+	end
+
+	local function sendMessage( _user, _pass, msg )
+		local res = http.post(serverURL .. "/send.php",
+			"username=" .. textutils.urlEncode( _user ) .. "&" ..
+			"password=" .. textutils.urlEncode( _pass ) .. "&" .. 
+			"to=" .. textutils.urlEncode( msg.to ) .. "&" ..
+			"subject=" .. textutils.urlEncode( msg.subject ) .. "&" .. 
+			"message=" .. textutils.urlEncode( textutils.serialize( msg.content ) ) )
+		if res then
+			local a = res.readAll():gsub( '\n', '' ):gsub( '<%!%-%- Hosting24 Analytics Code %-%-><script type="text/javascript" src="http://stats.hosting24.com/count.php"></script><%!%-%- End Of Analytics Code %-%->', '' )
+			res.close()
+			return a == "Your message has been sent.", a
+		else 
+			return false, "Failed to Connect to server"
+		end
+		return "true"
+	end
+	
+	local function waitForScreenChange( )
+		while true do
+			local _, but, x, y = os.pullEvent( "mouse_click" )
+			if but == 1 then
+				for i, v in pairs( menus ) do
+					if x >= v.x and x < v.x + #v.text + 2 and y == 6 and screen ~= v.text and screen ~= "" then
+						screen = v.text
+						return
+					end
+				end
+			end
+		end
+	end
+	
+	local function drawMain( sel, opt, drawMainText )
+		drawScreen( "home" )	
+		box.fillArea( 4, screenX - 3, 6, 6, colours.blue )
+		box.fillArea( 4, screenX - 3, 7, 18, colours.lightGrey )
+		
+		if drawMainText then
+			if sel == "Login" then
+				box.fillArea( 21, screenX - 10, 10, 10, colours.grey )
+				box.fillArea( 21, screenX - 10, 13, 13, colours.grey )
+				sWrite( "*Username can be your username or email", 8, 8, colours.black, colours.lightGrey )
+				sWrite( "Username:", 11, 10, colours.black, colours.lightGrey )
+				sWrite( "Password:", 11, 13, colours.black, colours.lightGrey )
+				sWrite( " Login ", ( screenX - string.len( " login " ) ) /2, 16, colours.white, colours.black )
+			elseif sel == "Logout" then
+				sWrite( "You have been successfully logged out.", 8, 8, colours.lightBlue, colours.lightGrey )
+				logged = false
+				userInfo.name = ""
+				userInfo.username = ""
+				userInfo.email = ""
+				userInfo.password = ""
+				updateMenu()
+			elseif sel == "Register" then
+				box.fillArea( 21, screenX - 10, 9, 9, colours.grey )
+				box.fillArea( 21, screenX - 10, 11, 11, colours.grey )
+				box.fillArea( 21, screenX - 10, 13, 13, colours.grey )
+				box.fillArea( 21, screenX - 10, 15, 15, colours.grey )
+				sWrite( "*Required", 8, 8, colours.red, colours.lightGrey )
+				sWrite( "    Name:", 11, 9, colours.black, colours.lightGrey ) sWrite( tmpInfo['name']:sub( #tmpInfo['name'] >= ( screenX - 33 ) and #tmpInfo['name'] - ( screenX - 33 ) or 1 ), 22, 9, colours.white, colours.grey )
+				sWrite( "   Email:", 11, 11, colours.black, colours.lightGrey ) sWrite( tmpInfo['email']:sub( #tmpInfo['email'] >= ( screenX - 33 ) and #tmpInfo['email'] - ( screenX - 33 ) or 1 ), 22, 11, colours.white, colours.grey )
+				sWrite( "*", 10, 13, colours.red, colours.lightGrey ) sWrite( "Username:", 11, 13, colours.black, colours.lightGrey ) sWrite( tmpInfo['username']:sub( #tmpInfo['username'] >= ( screenX - 33 ) and #tmpInfo['username'] - ( screenX - 33 ) or 1 ), 22, 13, colours.white, colours.grey )
+				sWrite( "*", 10, 15, colours.red, colours.lightGrey ) sWrite( "Password:", 11, 15, colours.black, colours.lightGrey )
+				sWrite( " Register ", ( screenX - string.len( " Register " ) ) /2, 17, colours.white, colours.black )
+			elseif sel == "Prefrences" then
+				-- Account details
+				sWrite( userInfo.username .. " -> Account details", 10, 8, colours.white, colours.lightGrey )
+				sWrite( "    Name:", 9, 10, colours.grey, colours.lightGrey )
+				sWrite( userInfo.name, 19, 10, colours.blue, colours.lightGrey )
+				sWrite( "   Email:", 9, 11, colours.grey, colours.lightGrey )
+				sWrite( userInfo.email, 19, 11, colours.blue, colours.lightGrey )
+				sWrite( "Username:", 9, 12, colours.grey, colours.lightGrey )
+				sWrite( userInfo.username, 19, 12, colours.blue, colours.lightGrey )
+				-- Other
+				sWrite( "[Del]", 43, 8, colours.red, colours.lightGrey )
+			elseif sel == "Messages" then
+				sWrite( userInfo.username .. ' -> Messages', 10, 8, colours.red, colours.lightGrey )
+				sWrite( "[ Inbox             ]", 7, 10, colours.blue, colours.lightGrey )
+				sWrite( "[ Compose a message ]", 7, 11, colours.blue, colours.lightGrey )
+			end
+		end
+
+		if opt == "compose" then
+			sWrite( userInfo.username .. " -> Compose a message", 10, 8, colours.red, colours.lightGrey )
+			sWrite( "Subject:", 7, 10, colours.white, colours.lightGrey )
+			sWrite( "   From:", 7, 11, colours.white, colours.lightGrey )
+			sWrite( "     To:", 7, 12, colours.white, colours.lightGrey )
+			sWrite( '[cancel]', getCenter( 8, 4, screenX - 3 ), screenY - 2, colours.black, colours.lightGrey )
+		elseif opt == 'inbox' then
+			sWrite( userInfo.username .. " -> Retrieving Inbox ... ", 10, 8, colours.red, colours.lightGrey )
+		elseif opt == 'showmsg' then
+			sWrite( 'Subject:', 7, 7, colours.white, colours.lightGrey )
+			sWrite( '   From:', 7, 8, colours.white, colours.lightGrey )
+			sWrite( '[reply]', math.floor( ( screenX*0.55 - string.len("[reply]") ) / 2 ), screenY - 1, colours.black, colours.lightGrey )
+			sWrite( '[delete]', math.floor( getCenter( 8, 4, screenX - 3 ) ), screenY - 1, colours.black, colours.lightGrey )
+			sWrite( '[back]', math.floor( ( screenX*1.65 - string.len("[back]") ) / 2 ), screenY - 1, colours.black, colours.lightGrey )
+		end
+		
+		for i, v in pairs( menus ) do
+			sWrite( ' ' .. v.text .. ' ', v.x, 6, sel == v.text and colours.black or colours.white, sel == v.text and colours.lightGrey or colours.blue )
+		end
+	end
+	
+	local function compose( msg )
+		drawMain( screen, 'compose', false )
+		local msg = msg or {subject = "", to = "", from = userInfo.username, content = {""}}
+		sWrite( msg.subject, 16, 10, colours.blue, colours.lightGrey )
+		sWrite( msg.from, 16, 11, colours.blue, colours.lightGrey )
+		sWrite( msg.to, 16, 12, colours.blue, colours.lightGrey )
+		
+		term.setCursorPos( 16, 10 )
+		local msgSubject = limitRead( 30, nil, msg.subject, false, 16, nil, true, getCenter( 8, 4, screenX - 3 ), getCenter( 8, 4, screenX - 3 ) + 8, screenY - 2, 'kill' )
+		if not msgSubject then return end
+		msg.subject = msgSubject
+		
+		term.setCursorPos( 16, 12 )
+		local toUser = limitRead( 30, nil, msg.to, false, 16, nil, true, getCenter( 8, 4, screenX - 3 ), getCenter( 8, 4, screenX - 3 ) + 8, screenY - 2, 'kill' )
+		if not toUser then return end
+		msg.to = toUser
+		
+		sWrite( userInfo.username .. " -> Content", 10, 8, colours.red, colours.lightGrey )
+		sWrite( '[send]', math.floor( ( screenX*0.5 - string.len("[send]") ) / 2 ), screenY - 1, colours.black, colours.lightGrey )
+		sWrite( '[cancel]', math.floor( ( screenX*1.5 - string.len("[cancel]") ) / 2 ), screenY - 1, colours.black, colours.lightGrey )
+		
+		local ok = true
+		parallel.waitForAny(
+			function() box.textField( colours.grey, colours.lightBlue, 4, screenX - 3, 10, screenY - 2, msg.content ) end,
+			function()
+				while true do
+					local e, but, x, y = os.pullEvent()
+					if e == "mouse_click" and but == 1 then
+						if x >= math.floor( ( screenX*0.5 - string.len("[send]") ) / 2 ) and x < math.floor( ( screenX*0.5 - string.len("[send]") ) / 2 ) + string.len('[send]') and y == screenY - 1 then
+							-- send
+							term.setCursorBlink( false )
+							msg.content = box.getTable()
+							local success, info = sendMessage( userInfo.username, userInfo.password, msg )
+							box.dialogBox(colours.orange, colours.blue, success and colours.lime or colours.red, colours.white, 5, screenX - 4, 7, success and "Success" or "Error", info )
+							ok = success
+							break
+						elseif x >= math.floor( ( screenX*1.5 - string.len("[cancel]") ) / 2 ) and x < math.floor( ( screenX*1.5 - string.len("[cancel]") ) / 2 ) + string.len('[cancel]') and y == screenY - 1 then
+							-- cancel
+							break
+						elseif isValidClick( t_Menus["MainScreen"], x, y ) then
+							-- Change menu
+							break
+						end
+					end
+				end
+			end
+		)
+		if not ok then return compose( msg ) end
+		term.setCursorBlink( false )
+	end
+	
+	local function showMsg( msg )
+		drawMain( screen, 'showmsg', false )
+		
+		sWrite( msg.subject, 16, 7, colours.white, colours.lightGrey )
+		sWrite( msg.from, 16, 8, colours.white, colours.lightGrey )
+		
+		parallel.waitForAny(
+			function() box.textBox(colours.grey, colours.lightBlue, 4, screenX - 3, 9, screenY - 2, msg.content) end,
+			function()
+				while true do
+					local e, but, x, y = os.pullEvent()
+					if e == "mouse_click" and but == 1 then
+						if x >= math.floor( ( screenX*0.55 - string.len("[reply]") ) / 2 ) and x < math.floor( ( screenX*0.55 - string.len("[reply]") ) / 2 ) + string.len('[reply]') and y == screenY - 1 then
+							-- reply
+							box.fillArea( 4, screenX - 3, 7, 18, colours.lightGrey )
+							compose( { subject = "RE: " .. msg.subject, from = userInfo.username, content = {""}, to = msg.from } )
+							break
+						elseif x >= math.floor( getCenter( 8, 4, screenX - 3 ) ) and x < math.floor( getCenter( 8, 4, screenX - 3 ) ) + string.len('[delete]') and y == screenY - 1 then
+							-- delete
+							local success, info = deleteMsg( userInfo.username, userInfo.password, msg )
+							break
+						elseif x >= math.floor( ( screenX*1.65 - string.len("[back]") ) / 2 ) and x < math.floor( ( screenX*1.65 - string.len("[back]") ) / 2 ) + string.len('[back]') and y == screenY - 1 then
+							-- back
+							break
+						elseif isValidClick( t_Menus["MainScreen"], x, y ) then
+							-- Change menu
+							run = false
+							break
+						end
+					end
+				end
+			end
+		)
+	end
+	
+	local function displayInbox()
+		drawMain( screen, 'inbox', false )
+		inbox = retrieveInbox( userInfo.username, userInfo.password )
+		sWrite( userInfo.username .. ' -> Inbox                    ', 10, 8, colours.red, colours.lightGrey )
+		sWrite( '[back]', getCenter( 6, 4, screenX - 3 ), screenY - 2, colours.black, colours.lightGrey )
+		local yPos = 1
+		while true do
+			for i = 9, 17 do
+				if inbox[i + yPos - 9] then
+					term.setCursorPos( 6, i ) term.setBackgroundColour( colours.lightGrey )
+					colorW( colours.black, '[ ', colours.cyan, tostring( i + yPos - 9 ), colours.black, ": ", colours.yellow, inbox[i + yPos - 9].from, colours.black, ' : ', colours.purple, inbox[i + yPos - 9].subject,
+					string.rep( ' ', 40 - ( 7 + tostring( i + yPos - 9 ):len() + inbox[i + yPos - 9].from:len() + inbox[i + yPos - 9].subject:len() ) ), colours.black, ']' )
+				else
+					break
+				end
+			end
+			if type( inbox ) and #inbox == 0 then sWrite( 'Your inbox is empty.', 13, 10, colours.blue, colours.lightGrey )
+			elseif inbox == 'Incorrect username/password!' then
+				sWrite( 'Invalid user credentials.', 13, 10, colours.blue, colours.lightGrey )
+				sWrite( 'Please relog.', 13, 11, colours.blue, colours.lightGrey )
+			end
+			local e, butt, x, y = os.pullEvent()
+			if e == "mouse_click" and butt == 1 then
+				if isValidClick( t_Menus["MainScreen"], x, y ) then
+					run = false
+					break
+				elseif x >= 6 and x <= 46 and y >= 9 and y <= 17 and inbox[yPos + y - 9] then
+					showMsg( inbox[yPos + y - 9] )
+					box.fillArea( 4, screenX - 3, 7, 18, colours.lightGrey )
+					return displayInbox()
+				elseif x >= getCenter( 6, 4, screenX - 3 ) and x < getCenter( 6, 4, screenX - 3 ) + string.len('[back]') and y == 17 then
+					break
+				end
+			elseif ( e == "mouse_scroll" ) or ( e == "key" ) then
+				if ( butt == 1 or butt == keys.down ) and yPos < #inbox - 8 then -- down
+					yPos = yPos + 1
+				elseif ( butt == -1 or butt == keys.up ) and yPos > 1 then -- up
+					yPos = yPos - 1
+				end
+			end
+		end
+	end
+	
+	local tFuncs = {
+		["Login"] = function()
+			while true do
+				-- Get user's login username and password credentials
+				term.setBackgroundColour( colours.grey )
+				term.setCursorPos( 22, 10 ) local user = limitRead( screenX - 33, nil, nil, false, 22, nil, true, ( screenX - string.len( " login " ) ) /2, ( screenX - string.len( " login " ) ) /2 + string.len( " login " ), 16 )
+				if not user then run = false return end
+				local loginType = user:find( '@' ) and 'email' or 'user'
+
+				term.setCursorPos( 22, 13 ) local password = limitRead( screenX - 32, "*", nil, false, 22, nil, true, ( screenX - string.len( " login " ) ) /2, ( screenX - string.len( " login " ) ) /2 + string.len( " login " ), 16 )
+				if not password then run = false return end
+				
+				local success, info = validateCredentials( loginType, user, password )
+				if success then
+					logged = true
+					userInfo = info
+					updateMenu()
+					screen = "Prefrences"
+					break
+				else
+					centerWrite( info == 'out-dated' and 'Your client is out-dated' or 'Invalid login', 15, colours.red, colours.lightGrey )
+					term.setTextColour( colours.white )
+					term.setBackgroundColour( colours.grey )
+					sWrite( string.rep( ' ', 20 ), 22, 10 )
+					sWrite( string.rep( ' ', 20 ), 22, 13 )
+				end
+			end
+		end,
+		["Logout"] = function()
+			while true do
+				local e, but, x, y = os.pullEvent()
+				if isValidClick( t_Menus["MainScreen"], x, y ) then
+					run = false
+					break
+				end
+			end
+		end,
+		["Register"] = function()
+			local tmpInfo = { success = false, err = { text = '', x = 1, y = 1 }, name = '', email = '', username = '', password = '' }
+			while true do
+				-- Get user's credentials for registration
+				term.setTextColour( colours.white )
+				term.setBackgroundColour( colours.grey )
+				
+				sWrite( tmpInfo.name, 22, 9, nil, colours.grey )
+				sWrite( tmpInfo.email, 22, 11, nil, colours.grey )
+				sWrite( tmpInfo.username, 22, 13, nil, colours.grey )
+				
+				term.setCursorPos( 22, 9 )
+				local name = limitRead( screenX - 33, nil, tmpInfo['name'], false, 22, nil, true, ( screenX - string.len( " Register " ) ) /2, ( screenX - string.len( " Register " ) ) /2 + string.len( " Register " ), 17 )
+				if not name then run = false return end
+				tmpInfo.name = name
+						
+				term.setCursorPos( 22, 11 )
+				local email = limitRead( screenX - 33, nil, tmpInfo['email'], false, 22, nil, true, ( screenX - string.len( " Register " ) ) /2, ( screenX - string.len( " Register " ) ) /2 + string.len( " Register " ), 17 )
+				if not email then run = false return end
+				tmpInfo.email = email
+				
+				term.setCursorPos( 22, 13 )
+				local username = limitRead( screenX - 33, nil, tmpInfo['username'], false, 22, nil, true, ( screenX - string.len( " Register " ) ) /2, ( screenX - string.len( " Register " ) ) /2 + string.len( " Register " ), 17 )
+				if not username then run = false return end
+				tmpInfo.username = username
+						
+				term.setCursorPos( 22, 15 )
+				local password = limitRead( screenX - 33, "*", nil, false, 22, nil, true, ( screenX - string.len( " Register " ) ) /2, ( screenX - string.len( " Register " ) ) /2 + string.len( " Register " ), 17 )
+				if not password then run = false return end
+				tmpInfo.password = password
+				
+				sWrite( string.rep(' ', tmpInfo.err.text:len() ), tmpInfo.err.x, tmpInfo.err.y, colours.red, colours.lightGrey )
+				tmpInfo.success, tmpInfo.err = registerCredentials( tmpInfo.name, tmpInfo.email, tmpInfo.username, tmpInfo.password )
+				
+				if tmpInfo.success then
+					logged = true
+					userInfo.name = tmpInfo.name == "" and "not set" or tmpInfo.name
+					userInfo.email = tmpInfo.email == "" and "not set" or tmpInfo.email
+					userInfo.username = tmpInfo.username
+					userInfo.password = tmpInfo.err
+					updateMenu()
+					screen = "Prefrences"
+					break
+				else
+					sWrite( tmpInfo.err.text, tmpInfo.err.x, tmpInfo.err.y, colours.red, colours.lightGrey )
+					sWrite( string.rep(' ', 19 ), 22, 9, nil, colours.grey )
+					sWrite( string.rep(' ', 19 ), 22, 11, nil, colours.grey )
+					sWrite( string.rep(' ', 19 ), 22, 13, nil, colours.grey )
+					sWrite( string.rep(' ', 19 ), 22, 15, nil, colours.grey )
+				end
+			end
+		end,
+		["Prefrences"] = function()
+			while true do
+				local e, but, x, y = os.pullEvent()
+				if e == "mouse_click" and but == 1 then
+					if x >= 43 and x < 48 and y == 8 then
+						-- Delete account
+						box.fillArea( 9, screenX - 8, 6, 6, colours.blue )
+						box.fillArea( 9, screenX - 8, 11, 11, colours.blue )
+						box.fillArea( 9, 9, 6, 11, colours.blue )
+						box.fillArea( screenX - 8, screenX - 8, 6, 11, colours.blue )
+						box.fillArea( 10, screenX - 9, 7, 10, colours.lightGrey )
+						sWrite( "Are you sure?", 20, 6, colours.red, colours.blue )
+						sWrite( "Confirm password:", 17, 7, colours.red, colours.lightGrey )
+						sWrite( "[Apply]", 22, 10, colours.white, colours.green )
+						box.fillArea( 11, screenX - 10, 8, 8, colours.grey )
+						term.setTextColour( colours.white )
+						term.setCursorPos( 12, 8 )
+						local p = limitRead( 25, "*", nil, false, nil, nil, true, 22, 29, 10 )
+						if not p then return end
+						local success, info = deleteAccount( userInfo.username, p )
+						box.dialogBox(colours.orange, colours.blue, success and colours.lime or colours.red, colours.white, 5, screenX - 5, 6, success and "Account deleted" or "Error", info )
+						if success then
+							logged = false
+							userInfo.name = ""
+							userInfo.email = ""
+							userInfo.username = ""
+							updateMenu()
+							screen = "Login"
+						end
+						break
+					elseif isValidClick( t_Menus["MainScreen"], x, y ) then
+						run = false
+						break
+					end
+				end
+			end
+		end,
+		["Messages"] = function()
+			while true do
+				local e, but, x, y = os.pullEvent()
+				if e == "mouse_click" and but == 1 then
+					if x >= 7 and x < 7 + string.len( '[ Inbox             ]' ) and y == 10 then
+						-- Inbox
+						displayInbox()
+						break
+					elseif x >= 7 and x < 7 + string.len( '[ Compose a message ]' ) and y == 11 then
+						-- Compose
+						compose()
+						break
+					elseif isValidClick( t_Menus["MainScreen"], x, y ) then
+						run = false
+						break
+					end
+				end
+			end
+		end
+	}
+	
+	while run do
+		drawMain( screen, '', true )
+		parallel.waitForAny( waitForScreenChange, tFuncs[screen] )
+	end
+end
+
+local function initiate()
+	-- Checking the required files and folders
+		bar:setMessage("")
+		bar:triggerUpdate( "Checking source folder... (" .. ( bar:getCurrentProgress() + 1 ) .. "/4)..." )
+		sleep(0.5)
+		if not fs.isDir(sourceFolder) then
+			error("Source folder does not exist! Please re-install using the installer.")
+		end
+		bar:triggerUpdate( "Checking folders... (" .. ( bar:getCurrentProgress() + 1 ) .. "/4)..." )
+		sleep(0.5)
+		for i = 1, #t_Folders do
+			if not fs.exists(t_Folders[i].sPath) then
+				error(t_Folders[i].sPath .. " does not exist! Please re-install using the installer.")
+			end
+		end
+		bar:triggerUpdate( "Checking files... (" .. ( bar:getCurrentProgress() + 1 ) .. "/4)..." )
+		sleep(0.5)
+		for i = 1, #t_NeededFiles do
+			for k = 1, #t_NeededFiles[i] do
+				if not fs.exists(t_NeededFiles[i][k].sPath) then
+					error(t_NeededFiles[i][k].sPath .. " does not exist!\nPlease redownload it at 'http://pastebin.com/" .. t_NeededFiles[i][k].sUrl .. "' and save it as '.ccYouTube/apis/" .. fs.getName(t_NeededFiles[i][k].sPath) .. "' or redownload ComputerCraft YouTube using the installer.")
+				end
+			end
+		end
+		
+	-- Loading APIS
+	bar:triggerUpdate( "Loading APIS... (" .. ( bar:getCurrentProgress() + 1 ) .. "/4)..." )
+	sleep(0.5)
+	for i = 1, #t_NeededFiles do
+		if t_NeededFiles[i].sType == "api" then
+			os.loadAPI(t_NeededFiles[i].sPath)
+		end
+	end
+	sleep(1)
+end
+
+local function safeRun( func, errDir )
+	local ok, err = pcall( func )
+	if not ok then
+		term.setCursorBlink( false )
+		term.setBackgroundColour( colours.red )
+		term.setTextColour( colours.white )
+		term.clear()
+		centerWrite( "Oh noes!", 2, colours.white, colours.red )
+		centerWrite( "It looks like ComputerCraft YouTube", 3, colours.white, colours.red )
+		centerWrite( "has crashed!", 4, colours.white, colours.red )
+		centerWrite( "Error:", 6, colours.white, colours.red )
+		centerWrite( err, 7, colours.blue, colours.red )
+		centerWrite( "A crash log has been saved to", 9, colours.white, colours.red )
+		centerWrite( errDir, 10, colours.lightBlue, colours.red )
+		centerWrite( "Please report this to remiX on the", 11, colours.white, colours.red )
+		centerWrite( "ComputerCraft forums as soon as possible.", 12, colours.white, colours.red )
+		centerWrite( "State any changes you have made if any.", 13, colours.white, colours.red )
+		local f = fs.open( errDir, "w" )
+		f.writeLine( "ComputerCraft YouTube Crash Log" )
+		f.writeLine( "" )
+		f.writeLine( "Error" )
+		f.writeLine( "===============================" )
+		f.writeLine( err )
+		f.writeLine( "===============================" )
+		f.writeLine( "" )
+		f.writeLine( "Report this error to remiX on the ComputerCraft Forums! asap!" )
+		f.writeLine( "" )
+		f.writeLine( "Please Note: This error log only saves the last logged error." )
+		f.close()
+		
+		term.setCursorPos( ( screenX - string.len("[Home]") ) / 2, 15 )
+		colorW( colours.black, "[Home]" )
+		repeat local _, b, x, y = os.pullEvent() until b == 1 and x >= ( screenX - string.len("[Home]") ) / 2 and x <= ( screenX - string.len("[Home]") ) / 2 + string.len("[Home]") and y == 15
+		selectedMenu = "Home"
+	end
+end
+
+--[[ End of functions ]] ---
+
+--[[ Main part of the program ]]--
+-- Loading screen
+bar = loadingScreen.init( loadingScreen.STANDARD, t_logos["loadLogo"], 4, 30, 14, colors.red, "Starting up...", "version " .. version, "By remiX" )
+parallel.waitForAll( function() bar:run( true ) end, initiate )
+
+local t = {
+	["Account"] = function() safeRun( account, errorLocation ) end,
+	["Home"] = function() safeRun( home, errorLocation ) end,
+	["Local Gallery"] = function() safeRun( localGallery, errorLocation ) end,
+	["Website Gallery"] = function() safeRun( websiteGallery, errorLocation ) end,
+	["Upload"] = function() safeRun( postVideo, errorLocation ) end,
+	["Credits"] = function() safeRun( credits, errorLocation ) end,
+	["Update"] = function() safeRun( checkForUpdate, errorLocation ) end,
+	["Help"] = function() safeRun( help, errorLocation ) end,
+	["Exit"] = function() 
+		term.setBackgroundColour(colours.black)
+		term.setCursorPos(1, 1)
+		term.clear()
+		colorW(colours.cyan, "Thank you for using cc", colours.grey, "-You", colours.red, "Tube", colours.cyan, ".\n", colours.white, "Made by remiX\n\n")
+		running = false
+	end,
+}
+
+drawScreen( "home" )
+
+-- Infinite loop
+while running do
+	term.setCursorBlink(false)
+	t[selectedMenu]()
+end

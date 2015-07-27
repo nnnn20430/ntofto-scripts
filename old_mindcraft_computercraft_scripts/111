@@ -1,0 +1,242 @@
+term.clear()
+term.setCursorBlink(false)
+local default_volume=15
+local default_side="right"
+local running=true
+local playing=true
+local current_volume=default_volume
+local termWidth, termHeight = term.getSize()
+redstone.setAnalogOutput(default_side, 1)
+
+function UpdateSongList(rawData)
+ local songs=""
+ if rawData == nil then
+  songs = http.get('http://localhost/pitchfork/player/command.php?CClogin=true&password=nnnnjan2222&listsongsCC').readAll()
+ else
+  songs = rawData
+ end
+ songsArray={}
+ nloops_song=0
+ for song in string.gmatch(songs, "[^,]+:[^,]+") do
+  nloops_songData = 0
+  songDataArray={}
+  for songData in string.gmatch(song, "[^:]+") do
+   songDataArray[nloops_songData] = songData
+   nloops_songData=nloops_songData+1
+  end
+  songsArray[nloops_song]=songDataArray
+  nloops_song=nloops_song+1
+ end
+ N_songs=nloops_song-1
+end
+
+function GetCurrentSong()
+ N_CurrentSong = http.get('http://localhost/pitchfork/player/command.php?CClogin=true&password=nnnnjan2222&currentsongCC').readAll()
+end
+
+function ColorsReset()
+ term.setTextColor(colors.white)
+ term.setBackgroundColor(colors.black)
+end
+
+function retunSpace(numofneededspace)
+ local space=""
+ local nloops=0
+ while true do
+  space=space.." "
+  nloops=nloops+1
+  if nloops >= numofneededspace then break end
+ end
+ return space
+end
+
+function setColors(textColor, BackgroundColor)
+ term.setTextColor(textColor)
+ term.setBackgroundColor(BackgroundColor)
+end
+
+function colorFillLine(color)
+ local currentx, currenty = term.getCursorPos()
+ setColors(color, color)
+ term.write(""..retunSpace(termWidth))
+ term.setCursorPos(1, currenty)
+end
+
+function writeToLineEnd(text)
+ local currentx, currenty = term.getCursorPos()
+ term.setCursorPos(termWidth-string.len(text), currenty)
+ term.write(text)
+end
+
+function CollectArguments(...)
+ return arg
+end
+
+function Reconstruct(table)
+ newTable={}
+ for key, value in pairs(table) do
+  newTable[key]=value
+ end
+ return newTable
+end
+
+local N_LineToStartWriting = 4
+local N_SongToStartWriting = 0
+local N_SelectedSong = 0
+local N_DisplaySongs = termHeight-(1+N_LineToStartWriting)
+local N_Processed = 0
+local Drawing = true
+
+function DrawInterface()
+ term.clear()
+
+ if N_SongToStartWriting+N_DisplaySongs < N_SelectedSong then
+  N_SongToStartWriting=N_SongToStartWriting+(N_SelectedSong-(N_DisplaySongs+N_SongToStartWriting))
+ end
+
+ if N_SongToStartWriting > N_SelectedSong then
+  N_SongToStartWriting=N_SongToStartWriting+(N_SelectedSong-N_SongToStartWriting)
+ end
+
+ while Drawing do
+  term.setCursorPos(1, N_LineToStartWriting+N_Processed)
+  if N_Processed<=N_songs then
+   colorFillLine(colors.orange)
+   setColors(colors.black, colors.orange)
+   if N_SelectedSong-N_SongToStartWriting == N_Processed and N_CurrentSong-N_SongToStartWriting == N_Processed then
+    setColors(colors.red, colors.orange)
+   elseif N_SelectedSong-N_SongToStartWriting == N_Processed then
+    setColors(colors.white, colors.orange)
+   elseif N_CurrentSong-N_SongToStartWriting == N_Processed then
+    setColors(colors.blue, colors.orange)
+   end
+   term.write(""..songsArray[N_SongToStartWriting+N_Processed][0])
+   if N_Processed==N_DisplaySongs then Drawing=false end
+   N_Processed=N_Processed+1
+  end
+  ColorsReset()
+ end
+
+ term.setCursorPos(1,1)
+ colorFillLine(colors.yellow)
+ setColors(colors.black, colors.yellow)
+ print("Status="..status)
+ term.setCursorPos(1,1)
+ writeToLineEnd("Up-Down arrows: Volume control")
+ term.setCursorPos(1,2)
+ colorFillLine(colors.yellow)
+ setColors(colors.black, colors.yellow)
+ print("Volume="..tonumber(current_volume).."-15")
+ term.setCursorPos(1,2)
+ writeToLineEnd("Left-Right arrows: Song navigation")
+ term.setCursorPos(1,3)
+ colorFillLine(colors.yellow)
+ setColors(colors.black, colors.yellow)
+ writeToLineEnd("Space: Play/Pause, Enter: Set song, Q: Quit radio")
+ ColorsReset()
+
+ term.setCursorPos(1, termHeight)
+ colorFillLine(colors.red)
+ setColors(colors.white, colors.red)
+ term.write("Current song: "..songsArray[tonumber(N_CurrentSong)][0])
+ ColorsReset()
+ term.setCursorPos(1,1)
+end
+
+
+
+
+updateLoopNumberTracker=0
+UpdateLoopQueueNumber=0
+
+UpdateSongList()
+GetCurrentSong()
+DrawInterface()
+
+loops=0
+while running do
+ Drawing=true
+ N_Processed = 0
+
+ os.startTimer(0.50)
+ eventDataArray = CollectArguments(os.pullEvent())
+
+ if eventDataArray[1] == 'key' then
+  if eventDataArray[2] == 200 then
+   if current_volume ~= 15 then
+    current_volume=current_volume+1
+    DrawInterface()
+   end
+  end
+
+  if eventDataArray[2] == 208 then
+   if current_volume ~= 1 then
+    current_volume=current_volume-1
+    DrawInterface()
+   end
+  end
+
+  if eventDataArray[2] == 203 then
+   if N_SelectedSong ~= 0 then
+    N_SelectedSong=N_SelectedSong-1
+    DrawInterface()
+   end
+  end
+
+  if eventDataArray[2] == 205 then
+   if N_SelectedSong ~= N_songs then
+    N_SelectedSong=N_SelectedSong+1
+    DrawInterface()
+   end
+  end
+
+  if eventDataArray[2] == 28 then
+   http.request('http://localhost/pitchfork/player/command.php?CClogin=true&password=nnnnjan2222&act=play&id='..songsArray[N_SelectedSong][1])
+  end
+ 
+  if eventDataArray[2] == 16 then
+   term.clear()
+   running=false
+   return
+  end
+
+  if eventDataArray[2] == 57 then
+   if playing == true then
+    playing = false
+   else
+    playing = true
+   end
+  end
+ end
+ if eventDataArray[1] == 'http_success' then
+  local url = eventDataArray[2]
+  local response = eventDataArray[3].readAll()
+  eventDataArray[3].close()
+  if url == 'http://localhost/pitchfork/player/command.php?CClogin=true&password=nnnnjan2222&listsongsCC' then
+   UpdateSongList(response)
+  end
+  if url == 'http://localhost/pitchfork/player/command.php?CClogin=true&password=nnnnjan2222&currentsongCC' then
+    N_CurrentSong = response
+  end
+  DrawInterface()
+ end
+
+ if playing == true
+ then
+  status="Playing"
+  redstone.setAnalogOutput(default_side, current_volume)
+ else
+  status="Paused"
+  redstone.setOutput(default_side, false)
+ end
+
+
+ if updateLoopNumberTracker==50 then
+  --http.get('http://1')--this somehow fixes screen glitches
+  UpdateLoopQueueNumber=UpdateLoopQueueNumber+1
+  if UpdateLoopQueueNumber == 1 then http.request('http://localhost/pitchfork/player/command.php?CClogin=true&password=nnnnjan2222&listsongsCC') end
+  if UpdateLoopQueueNumber == 2 then http.request('http://localhost/pitchfork/player/command.php?CClogin=true&password=nnnnjan2222&currentsongCC') UpdateLoopQueueNumber=0 end
+  updateLoopNumberTracker=0
+ end
+ updateLoopNumberTracker=updateLoopNumberTracker+1
+end

@@ -1,0 +1,17 @@
+#!/bin/zsh
+CWD=$(pwd)
+NEWLINE=$'\n'
+NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+if test -e /tmp/mirrorlist; then rm -r /tmp/mirrorlist; fi
+
+echo "Server=file:///$CWD/data/repo/ftp.archlinux.org/\$repo/os/\$arch" >> /tmp/mirrorlist
+echo "Server=file:///$CWD/data/repo/local/\$repo/os/\$arch" >> /tmp/mirrorlist
+
+CONFIG=$(<${CWD}/data/pacman.conf)
+CONFIG="${CONFIG}${NEWLINE}[private-repo]${NEWLINE}Server=file:///$CWD/data/repo/local/\$repo/os/\$arch${NEWLINE}"
+echo -n "${CONFIG}" > /tmp/${NEW_UUID} 
+
+/bin/pacman --config /tmp/${NEW_UUID} $@
+
+rm -r /tmp/mirrorlist
+rm -r /tmp/${NEW_UUID}
