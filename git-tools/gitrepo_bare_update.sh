@@ -4,6 +4,9 @@
 targetDirectory=""
 background=""
 
+#exports
+export GIT_TERMINAL_PROMPT=0
+
 opts=$(getopt -o d:b -l dir:,background -- "$@")
 eval set -- "${opts}"
 for i; do

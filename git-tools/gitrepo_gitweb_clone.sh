@@ -6,6 +6,9 @@ gitwebIndexUrl=""
 targetDirectory=""
 background=false
 
+#exports
+export GIT_TERMINAL_PROMPT=0
+
 opts=$(getopt -o r:i:d:b -l repo:,index:,dir:,background -- "$@")
 eval set -- "${opts}"
 for i; do
