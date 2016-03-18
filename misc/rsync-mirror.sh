@@ -4,7 +4,7 @@
 rsyncURI=""
 targetDirectory=""
 background=false
-rsyncDefaultParameters="-rtvplP"
+rsyncDefaultParameters=("-rtvplP")
 rsyncExtraParameters=()
 ARGC=$#
 
@@ -18,7 +18,7 @@ for i; do
 		--dir) targetDirectory="$2"; shift; shift;;
 		-b) background=true; shift;;
 		--background) background=true; shift;;
-                -n) rsyncDefaultParameters=""; shift;;
+                -n) rsyncDefaultParameters=(); shift;;
                 --no-defaults) rsyncDefaultParameters=""; shift;;
                 -e) rsyncExtraParameters+=("$2"); shift; shift;;
                 --extra-param) rsyncExtraParameters+=("$2"); shift; shift;;
@@ -27,7 +27,7 @@ for i; do
 done
 
 mirrorRsync() {
-	rsync "${rsyncDefaultParameters}" "${rsyncExtraParameters[@]}" $1 $2
+	rsync "${rsyncDefaultParameters[@]}" "${rsyncExtraParameters[@]}" $1 $2
 }
 
 if [ $ARGC -eq 0 ]; then
