@@ -5,8 +5,13 @@ DEST_DIR="./out"
 MODULE_LIST=$(echo -n "$(<./.gitmodules)" | awk -F '[ \t]' '$2 ~ /url/ { print($4); }')
 export GIT_TERMINAL_PROMPT=0
 
-cd $DEST_DIR
+mkdir "$DEST_DIR"
+cd "$DEST_DIR"
 
 for repo in $MODULE_LIST; do
-	git clone --bare $SUPER_REPO/$repo
+	if test "${repo%%://*}" != "$repo"; then
+		git clone --bare "$repo"
+	else
+		git clone --bare "$SUPER_REPO/$repo"
+	fi
 done

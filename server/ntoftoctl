@@ -1,0 +1,224 @@
+#!/bin/bash
+
+INVOKED_DIR="$PWD"
+SCRIPT_ROOT=$(cd "${0%/*}" && echo "$PWD")
+
+serviceIndexFile="./services"
+declare -A serviceList
+serviceList=(
+	[" "]="./"
+)
+
+# flagList format: type,name
+# type is a single char
+# b=boolean (value is set to true)
+# a=argument (value is set to the next parameter if found)
+# A=required argument (value is set to the next parameter or error)
+declare -A flagList
+flagList=(
+	["-a"]="b,all"
+	["--all"]="b,all"
+	["-b"]="b,build"
+	["--build"]="b,build"
+	["-r"]="b,rebuild"
+	["--rebuild"]="b,rebuild"
+)
+
+declare -A flagValue
+flagValue=(
+	["all"]=false
+	["build"]=false
+	["rebuild"]=false
+)
+extraParam=()
+
+for ((i = 1; i <= ${#}; i++)); do
+	if test "${!i:0:1}" = "-"; then
+		if test "${flagList[${!i}]:+_}"; then
+			case "${flagList[${!i}]:0:1}" in
+				"b")
+					flagValue["${flagList[${!i}]:2}"]=true
+					;; 
+				"a")
+					if eval test "\"\${$(($i+1))+_}\""; then
+						if test "${flagList[$(eval echo \"\$$(($i+1))\")]+_}"; then :; else
+							flagValue["${flagList[${!i}]:2}"]="$(eval echo \"\${$(($i+1))}\")"
+							((i++))
+						fi
+					fi
+					;;
+				"A")
+					if eval test "\"\${$(($i+1))+_}\""; then
+						if test "${flagList[$(eval echo \"\$$(($i+1))\")]+_}"; then
+							echo "Argument for \"${flagList[${!i}]:2}\" flag missing"
+							exit 1
+						else
+							flagValue["${flagList[${!i}]:2}"]="$(eval echo \"\${$(($i+1))}\")"
+							((i++))
+						fi
+					else
+						echo "Argument for \"${flagList[${!i}]:2}\" flag missing"
+						exit 1
+					fi
+					;;
+			esac
+		else
+			extraParam+=("${!i}")
+		fi
+	else
+		extraParam+=("${!i}")
+	fi
+done
+
+#todo
+#implement service controll using $0 [--all|-a] start/stop [name]
+#implement adding service to index $0 add/remove name[=path]
+#implement service status using $0 [--all|-a] status [name]
+#implement building using $0 [--all|-a] build [name]
+#implement cleaning using $0 [--all|-a] clean [name]
+#implement clean then build using $0 [--all|-a] rebuild [name]
+#implement update source using $0 [--all|-a] [(--build|-b)|(--rebuild|-r)] update [name]
+
+print_help() {
+	echo "$0 [OPTIONS] ACTION SERVICE_NAME"
+	echo
+	echo "Valid options:"
+	echo "	-a, --all"
+	echo "		selects all services, works for all actions"
+	echo
+	echo "	-b, --build"
+	echo "		causes update action to also build"
+	echo
+	echo "	-r, --rebuild"
+	echo "		causes update action to also rebuild"
+	echo
+	echo "Valid actions:"
+	echo "	start"
+	echo "		starts the specified service"
+	echo "		service name ignored when --all flag is set"
+	echo
+	echo "	stop"
+	echo "		stops the specified service"
+	echo "		service name ignored when --all flag is set"
+	echo
+	echo "	build"
+	echo "		builds new binaries for the service from source"
+	echo "		service name ignored when --all flag is set"
+	echo
+	echo "	clean"
+	echo "		deletes build for the service"
+	echo "		service name ignored when --all flag is set"
+	echo
+	echo "	rebuild"
+	echo "		combines actions of clean followed by build"
+	echo "		service name ignored when --all flag is set"
+	echo
+	echo "	update"
+	echo "		fetches new version of source for service"
+	echo "		service name ignored when --all flag is set"
+	echo "		--build causes a build action after update"
+	echo "		--rebuild causes a rebuild action after update"
+}
+
+read_settings() {
+	local file=$(<"${1}")
+	local IFS=$'\n'
+	local line name value
+	
+	for line in ${file}; do
+		name="${line%%=*}"
+		value="${line#*=}"
+		eval "${2}['${name//\'/\'\\\'\'}']='${value//\'/\'\\\'\'}'"
+	done
+}
+
+write_settings() {
+	local file=""
+	local _arrDef=$(declare -p "${2}")
+	eval "declare -A _arr=${_arrDef#*=}"
+	
+	for name in "${!_arr[@]}"; do
+		file="${file}${name}=${_arr[$name]}"$'\n'
+	done
+	echo -n "${file}" > "${1}"
+}
+
+service_action() {(
+	cd "${serviceList[${2}]}"
+	source ".ntofto_service"
+	"${1}"
+)}
+
+service_start() {
+	if "${flagValue[all]}"; then
+		for name in "${!serviceList[@]}"; do
+			service_action start "${serviceList[$name]}"
+		done
+	else
+		if test "${extraParam[1]}"; then
+			service_action start "${extraParam[1]}"
+		else
+			echo "No service specified."
+			exit 1
+		fi
+	fi
+}
+
+service_stop() {
+	if "${flagValue[all]}"; then
+		for name in "${!serviceList[@]}"; do
+			service_action stop "${serviceList[$name]}"
+		done
+	else
+		if test "${extraParam[1]}"; then
+			service_action stop "${extraParam[1]}"
+		else
+			echo "No service specified."
+			exit 1
+		fi
+	fi
+}
+
+service_index_add() {
+	local -A serviceList
+	read_settings "${extraParam[1]}" serviceList
+	serviceList["${extraParam[2]}"]="${extraParam[3]}"
+	write_settings "${extraParam[1]}" serviceList
+}
+
+service_index_remove() {
+	local -A serviceList
+	read_settings "${extraParam[1]}" serviceList
+	unset serviceList["${extraParam[2]}"]
+	write_settings "${extraParam[1]}" serviceList
+}
+
+main() {
+	cd "$SCRIPT_ROOT"
+	
+	if test -e "${serviceIndexFile}"; then
+		read_settings "${serviceIndexFile}" serviceList
+	fi
+	
+	case "${extraParam[0]}" in
+		"start")
+			service_start
+			;;
+		"stop")
+			service_stop
+			;;
+		"add")
+			service_index_add
+			;;
+		"remove")
+			service_index_remove
+			;;
+		*)
+			print_help
+			;;
+	esac
+	
+	exit 0
+}
+
+main
