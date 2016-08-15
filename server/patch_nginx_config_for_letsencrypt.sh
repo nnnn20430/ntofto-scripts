@@ -25,7 +25,20 @@ for i; do
 	esac
 done
 
-echo "$(<${NGINX_CONFIG})" | sed -r "s|server.?\{|server {rewrite \"\^\(\/\.well-known\/acme-challenge\/\.\*\)\$\" \"\$1\" last; location \/\.well-known\/acme-challenge {alias $(echo "$WEBROOT" | sed -e 's/\([[\/.*]\|\]\)/\\&/g')\/\.well-known\/acme-challenge;location ~ \/\.well-known\/acme-challenge\/\(\.\*\) {add_header Content-Type application\/jose\+json;}}|" > ./letsencrypt_nginx.conf
+echo "$(<${NGINX_CONFIG})" | sed -r "\
+s|^(\s)*server.?\{\
+|\
+server {\
+rewrite \"\^\(\/\.well-known\/acme-challenge\/\.\*\)\$\" \"\$1\" last; \
+location \/\.well-known\/acme-challenge {\
+alias $(\
+echo "$WEBROOT" | sed -e 's/\([[\/.*]\|\]\)/\\&/g'\
+)\/\.well-known\/acme-challenge; \
+location ~ \/\.well-known\/acme-challenge\/\(\.\*\) {\
+add_header Content-Type application\/jose\+json;\
+}\
+}\
+|" >./letsencrypt_nginx.conf
 mount --bind ./letsencrypt_nginx.conf "${NGINX_CONFIG}"
 "${NGINX_BINARY}" -p "${NGINX_PREFIX}" -s reload
 umount -fl "${NGINX_CONFIG}"
