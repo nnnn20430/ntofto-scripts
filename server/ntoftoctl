@@ -1,21 +1,24 @@
 #!/bin/bash
 
-INVOKED_DIR="$PWD"
-SCRIPT_ROOT=$(cd "${0%/*}" && echo "$PWD")
+# constants
+declare -r INVOKED_DIR="$PWD"
+declare -r SCRIPT_ROOT=$(cd "${0%/*}" && echo "$PWD")
 
+# variables
 serviceIndexFile="./services"
 declare -A serviceList
 serviceList=(
 	[" "]="./"
 )
 
-# flagList format: type,name
+# options
+# fL format: type,name
 # type is a single char
 # b=boolean (value is set to true)
 # a=argument (value is set to the next parameter if found)
 # A=required argument (value is set to the next parameter or error)
-declare -A flagList
-flagList=(
+declare -A fL
+fL=(
 	["-a"]="b,all"
 	["--all"]="b,all"
 	["-b"]="b,build"
@@ -24,55 +27,55 @@ flagList=(
 	["--rebuild"]="b,rebuild"
 )
 
-declare -A flagValue
-flagValue=(
+declare -A fV
+fV=(
 	["all"]=false
 	["build"]=false
 	["rebuild"]=false
 )
-extraParam=()
+eArgs=()
 
 for ((i = 1; i <= ${#}; i++)); do
 	if test "${!i:0:1}" = "-"; then
-		if test "${flagList[${!i}]:+_}"; then
-			case "${flagList[${!i}]:0:1}" in
+		if test "${fL[${!i}]:+_}"; then
+			case "${fL[${!i}]:0:1}" in
 				"b")
-					flagValue["${flagList[${!i}]:2}"]=true
+					fV["${fL[${!i}]:2}"]=true
 					;; 
 				"a")
 					if eval test "\"\${$(($i+1))+_}\""; then
-						if test "${flagList[$(eval echo \"\$$(($i+1))\")]+_}"; then :; else
-							flagValue["${flagList[${!i}]:2}"]="$(eval echo \"\${$(($i+1))}\")"
+						if test "${fL[$(eval echo \"\$$(($i+1))\")]+_}"; then :; else
+							fV["${fL[${!i}]:2}"]="$(eval echo \"\${$(($i+1))}\")"
 							((i++))
 						fi
 					fi
 					;;
 				"A")
 					if eval test "\"\${$(($i+1))+_}\""; then
-						if test "${flagList[$(eval echo \"\$$(($i+1))\")]+_}"; then
-							echo "Argument for \"${flagList[${!i}]:2}\" flag missing"
+						if test "${fL[$(eval echo \"\$$(($i+1))\")]+_}"; then
+							echo "Argument for \"${fL[${!i}]:2}\" flag missing"
 							exit 1
 						else
-							flagValue["${flagList[${!i}]:2}"]="$(eval echo \"\${$(($i+1))}\")"
+							fV["${fL[${!i}]:2}"]="$(eval echo \"\${$(($i+1))}\")"
 							((i++))
 						fi
 					else
-						echo "Argument for \"${flagList[${!i}]:2}\" flag missing"
+						echo "Argument for \"${fL[${!i}]:2}\" flag missing"
 						exit 1
 					fi
 					;;
 			esac
 		else
-			extraParam+=("${!i}")
+			eArgs+=("${!i}")
 		fi
 	else
-		extraParam+=("${!i}")
+		eArgs+=("${!i}")
 	fi
 done
 
 #todo
 #implement service controll using $0 [--all|-a] start/stop [name]
-#implement adding service to index $0 add/remove name[=path]
+#implement adding service to index $0 add/remove name [path]
 #implement service status using $0 [--all|-a] status [name]
 #implement building using $0 [--all|-a] build [name]
 #implement cleaning using $0 [--all|-a] clean [name]
@@ -80,11 +83,11 @@ done
 #implement update source using $0 [--all|-a] [(--build|-b)|(--rebuild|-r)] update [name]
 
 print_help() {
-	echo "$0 [OPTIONS] ACTION SERVICE_NAME"
+	echo "$0 [OPTIONS...] ACTION [PARAMETER...]"
 	echo
 	echo "Valid options:"
 	echo "	-a, --all"
-	echo "		selects all services, works for all actions"
+	echo "		selects all services, where it aplies"
 	echo
 	echo "	-b, --build"
 	echo "		causes update action to also build"
@@ -93,27 +96,33 @@ print_help() {
 	echo "		causes update action to also rebuild"
 	echo
 	echo "Valid actions:"
-	echo "	start"
+	echo "	start NAME"
 	echo "		starts the specified service"
 	echo "		service name ignored when --all flag is set"
 	echo
-	echo "	stop"
+	echo "	stop NAME"
 	echo "		stops the specified service"
 	echo "		service name ignored when --all flag is set"
 	echo
-	echo "	build"
+	echo "	add NAME PATH"
+	echo "		adds new service to index"
+	echo
+	echo "	remove NAME"
+	echo "		removes service from index"
+	echo
+	echo "	build NAME"
 	echo "		builds new binaries for the service from source"
 	echo "		service name ignored when --all flag is set"
 	echo
-	echo "	clean"
+	echo "	clean NAME"
 	echo "		deletes build for the service"
 	echo "		service name ignored when --all flag is set"
 	echo
-	echo "	rebuild"
+	echo "	rebuild NAME"
 	echo "		combines actions of clean followed by build"
 	echo "		service name ignored when --all flag is set"
 	echo
-	echo "	update"
+	echo "	update NAME"
 	echo "		fetches new version of source for service"
 	echo "		service name ignored when --all flag is set"
 	echo "		--build causes a build action after update"
@@ -144,19 +153,22 @@ write_settings() {
 }
 
 service_action() {(
-	cd "${serviceList[${2}]}"
+	local -r ACTION="${1}" SERVICE="${2}"
+	cd "${serviceList[${SERVICE}]}"
 	source ".ntofto_service"
-	"${1}"
+	if declare -f "${ACTION}" >/dev/null; then
+		"${ACTION}"
+	fi
 )}
 
 service_start() {
-	if "${flagValue[all]}"; then
+	if "${fV[all]}"; then
 		for name in "${!serviceList[@]}"; do
 			service_action start "${serviceList[$name]}"
 		done
 	else
-		if test "${extraParam[1]}"; then
-			service_action start "${extraParam[1]}"
+		if test "${eArgs[1]}"; then
+			service_action start "${eArgs[1]}"
 		else
 			echo "No service specified."
 			exit 1
@@ -165,13 +177,13 @@ service_start() {
 }
 
 service_stop() {
-	if "${flagValue[all]}"; then
+	if "${fV[all]}"; then
 		for name in "${!serviceList[@]}"; do
 			service_action stop "${serviceList[$name]}"
 		done
 	else
-		if test "${extraParam[1]}"; then
-			service_action stop "${extraParam[1]}"
+		if test "${eArgs[1]}"; then
+			service_action stop "${eArgs[1]}"
 		else
 			echo "No service specified."
 			exit 1
@@ -180,17 +192,25 @@ service_stop() {
 }
 
 service_index_add() {
+	if test "${#eArgs[@]}" -lt 3; then
+		print_help
+		exit 0
+	fi
 	local -A serviceList
-	read_settings "${extraParam[1]}" serviceList
-	serviceList["${extraParam[2]}"]="${extraParam[3]}"
-	write_settings "${extraParam[1]}" serviceList
+	read_settings "${serviceIndexFile}" serviceList
+	serviceList["${eArgs[1]}"]="${eArgs[2]}"
+	write_settings "${serviceIndexFile}" serviceList
 }
 
 service_index_remove() {
+	if test "${#eArgs[@]}" -lt 2; then
+		print_help
+		exit 0
+	fi
 	local -A serviceList
-	read_settings "${extraParam[1]}" serviceList
-	unset serviceList["${extraParam[2]}"]
-	write_settings "${extraParam[1]}" serviceList
+	read_settings "${serviceIndexFile}" serviceList
+	unset serviceList["${eArgs[1]}"]
+	write_settings "${serviceIndexFile}" serviceList
 }
 
 main() {
@@ -200,7 +220,7 @@ main() {
 		read_settings "${serviceIndexFile}" serviceList
 	fi
 	
-	case "${extraParam[0]}" in
+	case "${eArgs[0]}" in
 		"start")
 			service_start
 			;;
