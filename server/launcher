@@ -7,6 +7,7 @@ declare -r SCRIPT_ROOT=$(cd "${0%/*}" && echo "$PWD")
 # variables
 LAUNCHER_SOURCE=".launcher_source"
 LAUNCHER_PID_LIST=".launched_PID"
+LAUNCHER_NEEDS_ROOT="false"
 START_INIT_COMMAND=""
 STOP_CLEANUP_COMMAND=""
 EXEC_ARRAY=()
@@ -96,11 +97,12 @@ launcher_stop() {
 main() {
 	cd "$SCRIPT_ROOT"
 	
-	if test ${UID} -ne 0; then
-		echo "!!! this script must be run as root"
-	fi
-	
 	check_source
+	
+	if test "${LAUNCHER_NEEDS_ROOT}" = "true" && test ${UID} -ne 0; then
+		echo "!!! this script must be run as root"
+		exit 1
+	fi
 	
 	case "${LAUNCHER_ACTION}" in
 		"start")
