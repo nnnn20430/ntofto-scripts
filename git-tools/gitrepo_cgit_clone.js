@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 
-/*jshint node: true*/
-/*jshint evil: true*/
-/*jshint loopfunc: true */
-
 "use strict";
 //variables
 var http = require('http');
@@ -116,7 +112,7 @@ function gitCloneRepositories(repoArr) {
 	var absolute_dest_path = path.resolve(target_dir);
 	function gitClone(index) {
 		if (repoArr[index]) {
-			var repo_path = repoArr[index].indexOf(trimtop)==0?repoArr[index].substr(trimtop.length):repoArr[index];
+			var repo_path = repoArr[index].indexOf(trimtop)===0?repoArr[index].substr(trimtop.length):repoArr[index];
 			var clone_url = url.resolve(repo_url, repo_path);
 			var absolute_repo_path = absolute_dest_path+path.resolve('/', repo_path, '..');
 			console.log('Cloning '+clone_url);
@@ -126,7 +122,7 @@ function gitCloneRepositories(repoArr) {
 					env: {
 						GIT_TERMINAL_PROMPT: 0,
 						GIT_ASKPASS: 'true'
-					}
+					},
 					timeout: 0,
 					maxBuffer: 5*1024*1024
 				}, function (error, stdout, stderr) {
