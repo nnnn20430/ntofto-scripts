@@ -55,7 +55,7 @@ fork_exec() {
 			[[ -t 0 ]] && exec </dev/null
 			[[ -t 1 ]] && exec >/dev/null
 			[[ -t 2 ]] && exec 2>/dev/null
-			trap '' 1 2 
+			trap '' 1 2
 			eval exec {3..255}\>\&-
 			umask 0022
 			exec "${SETSID[@]}" "$@"
