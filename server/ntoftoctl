@@ -133,7 +133,7 @@ read_settings() {
 	local file=$(<"${1}")
 	local IFS=$'\n'
 	local line name value
-	
+
 	for line in ${file}; do
 		name="${line%%=*}"
 		value="${line#*=}"
@@ -145,7 +145,7 @@ write_settings() {
 	local file=""
 	local _arrDef=$(declare -p "${2}")
 	eval "declare -A _arr=${_arrDef#*=}"
-	
+
 	for name in "${!_arr[@]}"; do
 		file="${file}${name}=${_arr[$name]}"$'\n'
 	done
@@ -215,11 +215,11 @@ service_index_remove() {
 
 main() {
 	cd "$SCRIPT_ROOT"
-	
+
 	if test -e "${serviceIndexFile}"; then
 		read_settings "${serviceIndexFile}" serviceList
 	fi
-	
+
 	case "${eArgs[0]}" in
 		"start")
 			service_start
@@ -237,7 +237,7 @@ main() {
 			print_help
 			;;
 	esac
-	
+
 	exit 0
 }
 
