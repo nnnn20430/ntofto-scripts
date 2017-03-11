@@ -32,11 +32,11 @@ if test "${background}" = true; then
 fi
 
 if test -n "${gitRepoUrl}" && test -n "${gitwebIndexUrl}" && test -n "${targetDirectory}"; then
-	gitwebIndex="$(wget -q -O- ${gitwebIndexUrl})."
+	gitwebIndex="$(wget -q -O- ${gitwebIndexUrl})"
 	IFS=$'\n'
 	for repo in ${gitwebIndex}; do
 		repo=$(echo -n $repo | cut -f1 -d" ")
-		git clone --bare ${gitRepoUrl}${repo} ${targetDirectory}/${repo}
+		git clone --bare ${gitRepoUrl}/${repo} ${targetDirectory}/${repo}
 	done
 else
 	echo "Specify the git repo url, gitweb index url and destination directory"
