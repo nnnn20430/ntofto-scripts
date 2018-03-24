@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 
 runInBg() {
 	local SETSID=()
@@ -12,11 +12,13 @@ runInBg() {
 	fi
 	echo $(
 		(
-			[[ -t 0 ]] && exec </dev/null
-			[[ -t 1 ]] && exec >/dev/null
-			[[ -t 2 ]] && exec 2>/dev/null
+			test -t 0 && exec </dev/null
+			test -t 1 && exec >/dev/null
+			test -t 2 && exec 2>/dev/null
 			trap '' 1 2
-			eval exec {3..255}\>\&-
+			for fd in {3..255}; do
+				eval exec {fd}\>\&-;
+			done; unset fd
 			umask 0022
 			exec "${SETSID[@]}" "$@"
 		) >/dev/null 2>&1 &
@@ -24,6 +26,6 @@ runInBg() {
 	)
 }
 
-if test _"${0}" == _"${BASH_SOURCE}"; then
+if [[ ! "${ZSH_EVAL_CONTEXT}" =~ ":file$" ]]; then
 	runInBg "${@}"
 fi
