@@ -1,5 +1,5 @@
 #!/bin/bash
-SCRIPT_ROOT=$(cd "${0%/*}" && echo "$PWD")
+declare -r SCRIPT_ROOT="$(cd "${0%/*}" 2>/dev/null; echo "$PWD")"
 cd "$SCRIPT_ROOT" || exit
 
 trap "kill 0" SIGKILL
