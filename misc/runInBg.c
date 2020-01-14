@@ -16,14 +16,7 @@ int daemonize(void) {
 	if ((pid = fork()) < 0) {
 		return -1;
 	} else if (pid != 0) {
-		fd = open(pidfile, (O_WRONLY | O_CREAT | O_TRUNC),
-		     (S_IRUSR |
-		      S_IWUSR |
-		      S_IRGRP |
-		      S_IWGRP |
-		      S_IROTH |
-		      S_IWOTH)
-		);
+		fd = open(pidfile, (O_WRONLY | O_CREAT | O_TRUNC), 0666);
 		if (fd == -1) {
 			perror(progname);
 			return -1;
